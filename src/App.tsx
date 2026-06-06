@@ -47,6 +47,11 @@ export default function App() {
   const [highScore, setHighScore] = useState(0);
   const [isSpinning, setIsSpinning] = useState(false);
   const [gameOverView, setGameOverView] = useState<'main' | 'map' | 'narrative'>('main');
+  
+  // Drift states for UI feedback
+  const [uiActiveDriftScore, setUiActiveDriftScore] = useState(0);
+  const [uiShowDriftPayout, setUiShowDriftPayout] = useState(0);
+  const [uiShowDriftMsg, setUiShowDriftMsg] = useState('');
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -69,6 +74,24 @@ export default function App() {
   const trackCurvature = useRef<number[]>([]);
   const cameraAngleRef = useRef(0);
   const cameraSlideRef = useRef(0);
+
+  // High-performance drift loop refs
+  const isDriftingRef = useRef(false);
+  const driftDirectionRef = useRef<0 | -1 | 1>(0);
+  const driftAngleRef = useRef(0);
+  const driftScoreRef = useRef(0);
+  const driftComboRef = useRef(0);
+  const particlesRef = useRef<{
+    x: number;
+    y: number;
+    vx: number;
+    vy: number;
+    size: number;
+    alpha: number;
+    color: string;
+    decay: number;
+    isSpark?: boolean;
+  }[]>([]);
 
   // Helper to get road curvature at a specific distance
   const getRoadCurveAtDistance = (distance: number) => {
@@ -195,6 +218,17 @@ export default function App() {
     cameraAngleRef.current = 0;
     cameraSlideRef.current = 0;
 
+    // Reset drift variables
+    isDriftingRef.current = false;
+    driftDirectionRef.current = 0;
+    driftAngleRef.current = 0;
+    driftScoreRef.current = 0;
+    driftComboRef.current = 0;
+    particlesRef.current = [];
+    setUiActiveDriftScore(0);
+    setUiShowDriftPayout(0);
+    setUiShowDriftMsg('');
+
     // Generate Track Data: Extended circular S-shape
     const segmentSize = 100; // Smaller segments for smoother sine-based curves
     const totalSegments = Math.ceil(TOTAL_RACE_DISTANCE / segmentSize) + 10;
@@ -275,7 +309,7 @@ export default function App() {
       } else if (isRight) {
         sideVelocity.current += SIDE_SPEED;
       } else {
-        sideVelocity.current *= 0.7; // Increased friction for "shorter" drift
+        sideVelocity.current *= isDriftingRef.current ? 0.94 : 0.7; // Sustain side slide momentum when drifting!
       }
       
       // Limit side velocity
@@ -283,31 +317,180 @@ export default function App() {
       sideVelocity.current = Math.max(Math.min(sideVelocity.current, maxSideVel), -maxSideVel);
       
       playerPos.current.x += sideVelocity.current;
+
+      // --- DRIFT MECHANIC ---
+      const canDrift = speedRef.current > 4 && (isLeft || isRight);
+      const roadCurveVal = getRoadCurveAtDistance(distanceRef.current);
+      const isSteeringInCurve = Math.abs(roadCurveVal) > 65 && 
+        ((roadCurveVal > 0 && isRight) || (roadCurveVal < 0 && isLeft));
+
+      // Drift is triggered by holding handbrake (space/brake pedal) or hard steering inside S-curves
+      if (canDrift && (isBrake || isSteeringInCurve)) {
+        if (!isDriftingRef.current) {
+          isDriftingRef.current = true;
+          driftDirectionRef.current = isLeft ? -1 : 1;
+          // Sideways snap force
+          sideVelocity.current += driftDirectionRef.current * 1.5;
+        }
+      }
+
+      // Manage drift updates
+      if (isDriftingRef.current) {
+        // If speed drops too low, or they center steering completely, drift finishes
+        if (speedRef.current < 3.2 || (!isLeft && !isRight)) {
+          if (driftScoreRef.current > 0) {
+            const payout = driftScoreRef.current;
+            scoreRef.current += payout;
+            setUiActiveDriftScore(0);
+            setUiShowDriftPayout(payout);
+            
+            let msg = 'SLOW IN OUT';
+            if (payout > 1800) msg = '👑 DRIFT KING!';
+            else if (payout > 1000) msg = '🔥 MEGA DRIFT!';
+            else if (payout > 450) msg = '⭐ SUPER DRIFT';
+            else if (payout > 150) msg = 'CLEAN SLIDE';
+            setUiShowDriftMsg(msg);
+
+            setTimeout(() => {
+              setUiShowDriftPayout(prev => {
+                if (prev === payout) {
+                  setUiShowDriftMsg('');
+                  return 0;
+                }
+                return prev;
+              });
+            }, 2300);
+          }
+          isDriftingRef.current = false;
+          driftDirectionRef.current = 0;
+          driftScoreRef.current = 0;
+          driftComboRef.current = 0;
+        } else {
+          // Lock the direction to current steering input
+          if (isLeft) driftDirectionRef.current = -1;
+          if (isRight) driftDirectionRef.current = 1;
+
+          // Apply small physical centrifugal slide push
+          const centerPush = driftDirectionRef.current * 0.24 * (speedRef.current / MAX_SPEED);
+          playerPos.current.x += centerPush;
+
+          // Reward accumulative score
+          driftScoreRef.current += Math.floor(speedRef.current * 1.6 + Math.abs(sideVelocity.current) * 1.4);
+          driftComboRef.current += 1;
+
+          if (driftComboRef.current % 3 === 0) {
+            setUiActiveDriftScore(driftScoreRef.current);
+          }
+        }
+      }
     }
 
-    // Smooth Player Angle (Road Curve + Steering Tilt)
+    // Smooth Player Angle (Road Curve + Steering Tilt + Drift Body Yaw)
     const targetPlayerAngle = getRoadAngleAt(playerPos.current.y + CAR_HEIGHT / 2, distanceRef.current);
-    const steeringTilt = isLeft ? -0.06 : (isRight ? 0.06 : 0); // Reduced tilt for "shorter" visual turn
-    // Even smoother angle transition: reduced factor from 0.08 to 0.05
+    const steeringTilt = isLeft ? -0.06 : (isRight ? 0.06 : 0);
+    
+    // Smooth interpolation for drifting chassis yaw (car points sideways relative to travel)
+    const targetDriftYaw = isDriftingRef.current 
+      ? (driftDirectionRef.current === -1 ? -0.42 : 0.42)
+      : 0;
+    driftAngleRef.current += (targetDriftYaw - driftAngleRef.current) * 0.12;
+
     playerAngle.current += (targetPlayerAngle + steeringTilt - playerAngle.current) * 0.08;
 
-    // Road Curving Logic (No longer needed since we use pre-generated track)
-    // But we keep roadCurve.current updated for any legacy code or visual effects
+    // Road Curving Logic
     roadCurve.current = getRoadCurveAtDistance(distanceRef.current);
 
-    // Apply Drift based on road curvature (since road is centered)
+    // Apply Drift based on road curvature
     const driftForce = roadCurve.current * 0.005 * (speedRef.current / MAX_SPEED);
     playerPos.current.x -= driftForce;
 
-    // Boundary check based on current Y position
+    // Boundary check based on current Y position with wall collision penalties during drift
     const currentRoadX = getRoadXAt(playerPos.current.y, distanceRef.current);
+    const hitLeftWall = playerPos.current.x <= currentRoadX + 11;
+    const hitRightWall = playerPos.current.x >= currentRoadX + ROAD_WIDTH - CAR_WIDTH - 11;
+
     if (playerPos.current.x < currentRoadX + 10) {
       playerPos.current.x = currentRoadX + 10;
-      // Removed automatic braking: speedRef.current *= 0.97;
     }
     if (playerPos.current.x > currentRoadX + ROAD_WIDTH - CAR_WIDTH - 10) {
       playerPos.current.x = currentRoadX + ROAD_WIDTH - CAR_WIDTH - 10;
-      // Removed automatic braking: speedRef.current *= 0.97;
+    }
+
+    // High speed wall-rubbing cancels active drifts and cuts points
+    if ((hitLeftWall || hitRightWall) && isDriftingRef.current) {
+      if (driftScoreRef.current > 50) {
+        const partialPayout = Math.floor(driftScoreRef.current * 0.25);
+        scoreRef.current += partialPayout;
+        setUiActiveDriftScore(0);
+        setUiShowDriftPayout(partialPayout);
+        setUiShowDriftMsg('💥 BARRA DE CHOQUE! (25%)');
+
+        setTimeout(() => {
+          setUiShowDriftMsg('');
+          setUiShowDriftPayout(0);
+        }, 1800);
+      }
+      isDriftingRef.current = false;
+      driftDirectionRef.current = 0;
+      driftScoreRef.current = 0;
+      driftComboRef.current = 0;
+    }
+
+    // --- drift particles update ---
+    particlesRef.current.forEach(p => {
+      p.x += p.vx;
+      p.y += p.vy;
+      p.y += speedRef.current * 0.65; // move downwards relative to road speed
+      p.alpha -= p.decay;
+      if (p.isSpark) {
+        p.size *= 0.94;
+      } else {
+        p.size += 0.28;
+      }
+    });
+    particlesRef.current = particlesRef.current.filter(p => p.alpha > 0);
+
+    // Spawn smoke & spark particles from rear tires
+    if (isDriftingRef.current && speedRef.current > 2) {
+      const compositeAngle = playerAngle.current + driftAngleRef.current;
+      const cosA = Math.cos(compositeAngle);
+      const sinA = Math.sin(compositeAngle);
+
+      const rLeftX = playerPos.current.x + CAR_WIDTH / 2 + (-CAR_WIDTH / 2 + 5) * cosA - (CAR_HEIGHT / 2 - 4) * sinA;
+      const rLeftY = playerPos.current.y + CAR_HEIGHT / 2 + (-CAR_WIDTH / 2 + 5) * sinA + (CAR_HEIGHT / 2 - 4) * cosA;
+
+      const rRightX = playerPos.current.x + CAR_WIDTH / 2 + (CAR_WIDTH / 2 - 5) * cosA - (CAR_HEIGHT / 2 - 4) * sinA;
+      const rRightY = playerPos.current.y + CAR_HEIGHT / 2 + (CAR_WIDTH / 2 - 5) * sinA + (CAR_HEIGHT / 2 - 4) * cosA;
+
+      const tires = [{ x: rLeftX, y: rLeftY }, { x: rRightX, y: rRightY }];
+      tires.forEach(tire => {
+        // Smoke cloud (glowing light cyan neon tire smoke)
+        particlesRef.current.push({
+          x: tire.x,
+          y: tire.y,
+          vx: -(sideVelocity.current * 0.15) + (Math.random() - 0.5) * 1.2,
+          vy: Math.random() * 0.4 + 0.1,
+          size: Math.random() * 2.5 + 3.0,
+          alpha: 0.35 + Math.random() * 0.12,
+          color: '165, 243, 252',
+          decay: Math.random() * 0.016 + 0.011
+        });
+
+        // Glowing friction sparks
+        if (Math.random() < 0.68) {
+          particlesRef.current.push({
+            x: tire.x,
+            y: tire.y,
+            vx: -sideVelocity.current * 0.35 + (Math.random() - 0.5) * 4.0,
+            vy: -Math.random() * 1.8 - 0.6,
+            size: Math.random() * 1.3 + 1.2,
+            alpha: 1.0,
+            color: Math.random() > 0.5 ? '250, 204, 21' : '239, 68, 68',
+            decay: Math.random() * 0.045 + 0.026,
+            isSpark: true
+          });
+        }
+      });
     }
 
     // Update Distance and Fuel
@@ -622,10 +805,32 @@ export default function App() {
       ctx.restore();
     });
 
+    // Draw Drift Particles
+    particlesRef.current.forEach(p => {
+      ctx.save();
+      ctx.beginPath();
+      if (p.isSpark) {
+        // Sparks
+        ctx.fillStyle = `rgba(${p.color === '250, 204, 21' ? '250, 204, 21' : '239, 68, 68'}, ${p.alpha})`;
+        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+        ctx.fill();
+        // Bright flare core
+        ctx.fillStyle = `rgba(255, 255, 255, ${p.alpha})`;
+        ctx.arc(p.x, p.y, p.size * 0.5, 0, Math.PI * 2);
+        ctx.fill();
+      } else {
+        // Smoke clouds
+        ctx.fillStyle = `rgba(${p.color}, ${p.alpha})`;
+        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
+    });
+
     // Draw Player
     ctx.save();
     ctx.translate(playerPos.current.x + CAR_WIDTH / 2, playerPos.current.y + CAR_HEIGHT / 2);
-    ctx.rotate(playerAngle.current);
+    ctx.rotate(playerAngle.current + driftAngleRef.current);
 
     ctx.fillStyle = '#3b82f6'; 
     ctx.fillRect(-CAR_WIDTH / 2, -CAR_HEIGHT / 2, CAR_WIDTH, CAR_HEIGHT);
@@ -641,6 +846,41 @@ export default function App() {
     ctx.fillRect(CAR_WIDTH / 2 - 8, CAR_HEIGHT / 2 - 2, 6, 4);
     
     ctx.restore();
+
+    // Floating text feedback for active drifting or score gains
+    if (isDriftingRef.current && driftScoreRef.current > 10) {
+      ctx.save();
+      // Glowing text drop shadows
+      ctx.shadowBlur = 8;
+      ctx.shadowColor = '#22d3ee';
+      ctx.font = 'bold 15px sans-serif';
+      ctx.fillStyle = '#22d3ee'; // Electric cyan
+      ctx.textAlign = 'center';
+      ctx.fillText(`DRIFT ${driftScoreRef.current} PTS`, playerPos.current.x + CAR_WIDTH / 2, playerPos.current.y - 24);
+      
+      ctx.shadowBlur = 4;
+      ctx.shadowColor = '#facc15';
+      ctx.fillStyle = '#facc15'; // Hot yellow multiplier
+      ctx.font = 'bold 9px monospace';
+      ctx.fillText(`⚡ MULTIPLIER x${Math.min(5, 1 + Math.floor(driftComboRef.current / 30))}`, playerPos.current.x + CAR_WIDTH / 2, playerPos.current.y - 12);
+      ctx.restore();
+    } else if (uiShowDriftPayout > 0 && uiShowDriftMsg) {
+      ctx.save();
+      ctx.shadowBlur = 10;
+      ctx.shadowColor = '#facc15'; // Golden payout glow
+      ctx.font = 'bold 14px sans-serif';
+      ctx.fillStyle = '#facc15';
+      ctx.textAlign = 'center';
+      
+      const textToDisplay = uiShowDriftMsg.includes('CHOQUE') ? `PUNTOS +${uiShowDriftPayout}` : `DRIFT +${uiShowDriftPayout} PTS`;
+      ctx.fillText(textToDisplay, playerPos.current.x + CAR_WIDTH / 2, playerPos.current.y - 25);
+      
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = uiShowDriftMsg.includes('CHOQUE') ? '#ef4444' : '#67e8f9';
+      ctx.font = 'bold 9px sans-serif';
+      ctx.fillText(uiShowDriftMsg, playerPos.current.x + CAR_WIDTH / 2, playerPos.current.y - 13);
+      ctx.restore();
+    }
 
     ctx.restore(); // Restore camera rotation and slide visual transformation
 
@@ -733,43 +973,23 @@ export default function App() {
   }, [uiScore, highScore]);
 
   return (
-    <div className="min-h-screen bg-neutral-950 text-white flex items-center justify-center p-2 sm:p-4 font-sans overflow-hidden select-none">
+    <div className="w-screen h-screen bg-neutral-950 text-white flex flex-col overflow-hidden font-sans select-none p-0">
       
-      {/* Outer interactive hardware wrapper representing a high-performance 1080x1920 smartphone */}
-      <div className="relative p-2.5 sm:p-3 select-none flex items-center justify-center">
-        {/* Physical volume button details on left */}
-        <div className="absolute left-[0px] top-[15%] w-[3px] h-[50px] bg-neutral-700/90 rounded-l shadow" />
-        <div className="absolute left-[0px] top-[23%] w-[3px] h-[50px] bg-neutral-700/90 rounded-l shadow" />
-        {/* Power button on right */}
-        <div className="absolute right-[0px] top-[19%] w-[3px] h-[72px] bg-neutral-700/90 rounded-r shadow" />
+      {/* Centered clean game layout structure, removing the phone frame mockup */}
+      <div className="w-full h-full relative bg-neutral-950 flex flex-col overflow-hidden outline-none">
 
-        {/* smartphone mockup shell (scaled 9:16 aspect ratio, representation of a 1080x1920 HD mobile layout) */}
-        <div className="w-[330px] xs:w-[360px] sm:w-[390px] md:w-[410px] lg:w-[430px] h-auto aspect-[9/16] rounded-[44px] sm:rounded-[48px] border-[10px] sm:border-[12px] border-neutral-800 relative bg-neutral-950 flex flex-col overflow-hidden sm:shadow-[0_0_80px_rgba(0,0,0,0.85)] outline-none">
-          
-          {/* simulated status bar */}
-          <div className="flex h-[32px] items-center justify-between px-5 bg-neutral-900/40 text-[10px] text-neutral-400 select-none z-30 shrink-0 border-b border-neutral-900">
-            <span className="font-extrabold tracking-tight text-neutral-300">09:41</span>
-            {/* speaker / notch */}
-            <div className="hidden sm:block w-[90px] h-3.5 bg-neutral-950 rounded-b-xl border-x border-b border-neutral-900 -mt-1" />
-            <div className="flex items-center gap-1 text-[9px] font-bold text-neutral-400">
-              <span className="text-[8px] bg-neutral-800 px-1 py-0.2 rounded text-neutral-300 font-mono">1080x1920 HD</span>
-              <span>📶</span>
-              <span>88% 🔋</span>
-            </div>
-          </div>
-
-          {/* Game Canvas Container */}
-          <div 
-            ref={containerRef}
-            tabIndex={0}
-            className="relative w-full aspect-[390/500] bg-neutral-900 focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all shrink-0"
-            onMouseDown={() => containerRef.current?.focus()}
-          >
+        {/* Game Canvas Container */}
+        <div 
+          ref={containerRef}
+          tabIndex={0}
+          className="relative flex-1 w-full bg-neutral-900 focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all flex items-center justify-center overflow-hidden"
+          onMouseDown={() => containerRef.current?.focus()}
+        >
           <canvas
             ref={canvasRef}
             width={CANVAS_WIDTH}
             height={CANVAS_HEIGHT}
-            className="w-full h-full block"
+            className="max-h-full max-w-full aspect-[390/500] object-contain block"
           />
 
           {/* Overlays */}
@@ -944,7 +1164,7 @@ export default function App() {
         </div>
 
         {/* Dashboard and Virtual Controllers Area below Canvas */}
-        <div className="flex-1 bg-neutral-900 border-t-2 border-neutral-800 flex flex-col p-4 justify-between relative overflow-hidden">
+        <div className="h-[270px] sm:h-[295px] shrink-0 bg-neutral-900 border-t-2 border-neutral-800 flex flex-col p-4 justify-between relative overflow-hidden">
           
           {/* Carbon Fiber Background Effect */}
           <div className="absolute inset-0 bg-[radial-gradient(#1e293b_1px,transparent_1px)] [background-size:16px_16px] opacity-10 pointer-events-none" />
@@ -1076,13 +1296,9 @@ export default function App() {
 
           </div>
 
-          {/* iOS-style bottom home indicator bar line */}
-          <div className="w-[120px] h-[4px] bg-neutral-800 rounded-full mx-auto -mb-1 mt-1 shrink-0" />
-
         </div>
 
       </div>
     </div>
-  </div>
-);
+  );
 }
