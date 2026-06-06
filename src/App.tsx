@@ -67,6 +67,8 @@ export default function App() {
   const lastTime = useRef(0);
   const entityIdCounter = useRef(0);
   const trackCurvature = useRef<number[]>([]);
+  const cameraAngleRef = useRef(0);
+  const cameraSlideRef = useRef(0);
 
   // Helper to get road curvature at a specific distance
   const getRoadCurveAtDistance = (distance: number) => {
@@ -190,6 +192,8 @@ export default function App() {
     roadCurve.current = 0;
     targetCurve.current = 0;
     curveTimer.current = 0;
+    cameraAngleRef.current = 0;
+    cameraSlideRef.current = 0;
 
     // Generate Track Data: Extended circular S-shape
     const segmentSize = 100; // Smaller segments for smoother sine-based curves
@@ -431,6 +435,20 @@ export default function App() {
     setUiDistance(distanceRef.current);
     setUiScore(scoreRef.current);
 
+    // Calculate 2.5D camera tilt turning & sliding (simulates camera banking and view rotation during curves)
+    const curveVal = getRoadCurveAtDistance(distanceRef.current);
+    const steeringFactor = isLeft ? -0.012 : (isRight ? 0.012 : 0);
+    
+    // Camera tilts opposite to the curve direction to simulate centrifugal banking or roll
+    const targetCameraAngle = -(curveVal / 300) * 0.045 + steeringFactor;
+    // Camera slides opposite to the curve direction to keep the visual perspective centered
+    const targetCameraSlide = -(curveVal / 300) * 16;
+    
+    // Smooth interpolation
+    const lerpFactor = 0.06;
+    cameraAngleRef.current += (targetCameraAngle - cameraAngleRef.current) * lerpFactor;
+    cameraSlideRef.current += (targetCameraSlide - cameraSlideRef.current) * lerpFactor;
+
     draw();
     requestRef.current = requestAnimationFrame(update);
   };
@@ -444,6 +462,14 @@ export default function App() {
     // Background (Static)
     ctx.fillStyle = '#064e3b'; 
     ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+
+    // Apply 2.5D camera rotation and sliding visual effect around the player region
+    ctx.save();
+    const pivotX = CANVAS_WIDTH / 2;
+    const pivotY = CANVAS_HEIGHT - 100;
+    ctx.translate(pivotX + cameraSlideRef.current, pivotY);
+    ctx.rotate(cameraAngleRef.current);
+    ctx.translate(-pivotX, -pivotY);
 
     // Draw Road in segments to create the curve effect
     const segmentHeight = 5;
@@ -615,6 +641,8 @@ export default function App() {
     ctx.fillRect(CAR_WIDTH / 2 - 8, CAR_HEIGHT / 2 - 2, 6, 4);
     
     ctx.restore();
+
+    ctx.restore(); // Restore camera rotation and slide visual transformation
 
     // Minimap (Optimized for 390px canvas)
     const mapWidth = 35;
