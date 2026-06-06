@@ -50,6 +50,8 @@ export default function App() {
   
   // Drift states for UI feedback
   const [uiActiveDriftScore, setUiActiveDriftScore] = useState(0);
+  const [uiActiveDriftCombo, setUiActiveDriftCombo] = useState(0);
+  const [uiIsDrifting, setUiIsDrifting] = useState(false);
   const [uiShowDriftPayout, setUiShowDriftPayout] = useState(0);
   const [uiShowDriftMsg, setUiShowDriftMsg] = useState('');
   
@@ -232,6 +234,8 @@ export default function App() {
     wheelAngleRef.current = 0;
     setUiWheelAngle(0);
     setUiActiveDriftScore(0);
+    setUiActiveDriftCombo(0);
+    setUiIsDrifting(false);
     setUiShowDriftPayout(0);
     setUiShowDriftMsg('');
 
@@ -627,6 +631,8 @@ export default function App() {
     setUiDistance(distanceRef.current);
     setUiScore(scoreRef.current);
     setUiWheelAngle(wheelAngleRef.current);
+    setUiActiveDriftCombo(driftComboRef.current);
+    setUiIsDrifting(isDriftingRef.current);
 
     // Calculate 2.5D camera tilt turning & sliding (simulates camera banking and view rotation during curves)
     const curveVal = getRoadCurveAtDistance(distanceRef.current);
@@ -988,30 +994,30 @@ export default function App() {
       {/* Centered clean game layout structure, removing the phone frame mockup */}
       <div className="w-full h-full relative bg-neutral-950 flex flex-col overflow-hidden outline-none">
 
-        {/* Game Canvas Container */}
+        {/* Game Canvas Container - Fullscreen */}
         <div 
           ref={containerRef}
           tabIndex={0}
-          className="relative flex-1 w-full bg-neutral-900 focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all flex items-center justify-center overflow-hidden"
+          className="relative w-full h-full bg-neutral-950 focus:outline-none transition-all flex items-center justify-center overflow-hidden"
           onMouseDown={() => containerRef.current?.focus()}
         >
           <canvas
             ref={canvasRef}
             width={CANVAS_WIDTH}
             height={CANVAS_HEIGHT}
-            className="max-h-full max-w-full aspect-[390/500] object-contain block"
+            className="w-full h-full block object-cover"
           />
 
           {/* Top HUD Overlay (Visible during active gameplay as requested) */}
           {(gameState === 'playing' || gameState === 'countdown') && (
-            <div className="absolute top-3 left-3 right-3 sm:top-4 sm:left-4 sm:right-4 flex justify-between items-start z-10 pointer-events-none select-none">
+            <div className="absolute top-3 left-3 right-3 sm:top-4 sm:left-4 sm:right-4 flex justify-between items-center z-10 pointer-events-none select-none gap-2">
               
               {/* Upper Left Speedometer (Premium Racing Theme) */}
               <div className="bg-black/80 backdrop-blur-md px-3 py-1.5 sm:px-4 sm:py-2 rounded-2xl border border-neutral-800/80 flex items-center gap-2 sm:gap-3 shadow-2xl pointer-events-auto">
                 <div className="flex flex-col">
                   <span className="text-[7.5px] font-black tracking-widest text-cyan-400 uppercase leading-none">VELOCIDAD</span>
                   <div className="flex items-baseline gap-0.5 mt-0.5">
-                    <span className="text-2xl sm:text-3xl font-black italic tracking-tighter tabular-nums text-white">
+                    <span className="text-xl sm:text-2xl font-black italic tracking-tighter tabular-nums text-white">
                       {Math.floor(uiSpeed * 10)}
                     </span>
                     <span className="text-[8px] sm:text-[9px] font-black italic text-neutral-400">KM/H</span>
@@ -1039,8 +1045,18 @@ export default function App() {
                 </div>
               </div>
 
+              {/* Upper Middle RECORD Meter (Centered at the top as requested) */}
+              <div className="bg-black/85 backdrop-blur-md px-3 py-1.5 sm:px-4 sm:py-2 rounded-2xl border border-neutral-800/80 flex flex-col items-center justify-center shadow-2xl pointer-events-auto min-w-[90px] sm:min-w-[120px]">
+                <span className="text-[7.5px] font-black tracking-widest text-amber-400 uppercase leading-none flex items-center gap-1">
+                  <Trophy className="w-2.5 h-2.5 text-amber-400 animate-pulse" /> RÉCORD
+                </span>
+                <span className="text-xl sm:text-2xl font-black italic text-amber-400 tabular-nums mt-0.5">
+                  {highScore}
+                </span>
+              </div>
+
               {/* Upper Right Fuel Gauge / Energy (Premium Glow Theme) */}
-              <div className="bg-black/80 backdrop-blur-md px-3 py-1.5 sm:px-4 sm:py-2 rounded-2xl border border-neutral-800/80 flex flex-col items-end shadow-2xl w-[125px] sm:w-[145px] pointer-events-auto animate-fade-in">
+              <div className="bg-black/80 backdrop-blur-md px-3 py-1.5 sm:px-4 sm:py-2 rounded-2xl border border-neutral-800/80 flex flex-col items-end shadow-2xl w-[120px] sm:w-[145px] pointer-events-auto">
                 <div className="flex justify-between w-full items-center mb-1">
                   <span className="text-[7.5px] font-black tracking-widest text-emerald-400 uppercase leading-none flex items-center gap-1">
                     <Fuel className="w-2.5 h-2.5 text-emerald-400" /> ENERGÍA
@@ -1067,7 +1083,235 @@ export default function App() {
             </div>
           )}
 
-          {/* Overlays */}
+          {/* Side Floating Drift/Multiplier Panel (Appears on the side during active drifting) */}
+          <AnimatePresence>
+            {uiIsDrifting && uiActiveDriftCombo > 0 && (
+              <motion.div
+                initial={{ opacity: 0, x: 50, scale: 0.9 }}
+                animate={{ opacity: 1, x: 0, scale: 1 }}
+                exit={{ opacity: 0, x: 50, scale: 0.9 }}
+                className="absolute right-4 top-[35%] -translate-y-1/2 z-10 pointer-events-none select-none flex flex-col items-end gap-1"
+              >
+                <div className="bg-black/85 backdrop-blur-md border border-amber-500/30 p-3 rounded-2xl shadow-[0_0_20px_rgba(245,158,11,0.2)] flex flex-col items-end min-w-[130px]">
+                  <span className="text-[8px] font-black tracking-widest text-amber-500 uppercase flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" /> DERRAPANDO
+                  </span>
+                  
+                  {/* Neon Multiplier */}
+                  <span className="text-4xl font-extrabold italic text-amber-400 tabular-nums my-1 drop-shadow-[0_0_10px_rgba(245,158,11,0.5)] select-none">
+                    x{Math.min(5, 1 + Math.floor(uiActiveDriftCombo / 30))}
+                  </span>
+
+                  {/* Drift Points */}
+                  <span className="text-sm font-semibold text-neutral-300 tabular-nums">
+                    +{uiActiveDriftScore} <span className="text-[10px] text-neutral-500 font-extrabold">PTS</span>
+                  </span>
+
+                  {/* Custom progress to next tier */}
+                  <div className="w-full h-1 bg-neutral-900 rounded-full overflow-hidden mt-2">
+                    <div 
+                      className="h-full bg-gradient-to-r from-amber-500 to-amber-300 rounded-full transition-all duration-150"
+                      style={{ width: `${Math.min(100, (uiActiveDriftCombo % 30) * 3.33)}%` }}
+                    />
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* Virtual Steering and Pedals floating overlay pads (At the bottom of racing screen) */}
+          {(gameState === 'playing' || gameState === 'countdown') && (
+            <div className="absolute bottom-4 left-4 right-4 z-10 flex items-end justify-between select-none pointer-events-none gap-2">
+              
+              {/* Floating Steering Wheel (Volante de Control) */}
+              <div className="pointer-events-auto bg-black/75 backdrop-blur-md p-2 rounded-full border border-neutral-800/80 shadow-2xl flex items-center justify-center shrink-0">
+                <div 
+                  className="relative w-24 h-24 sm:w-28 sm:h-28 flex items-center justify-center cursor-ew-resize touch-none select-none active:scale-95 transition-transform"
+                  onMouseDown={(event) => {
+                    const rect = event.currentTarget.getBoundingClientRect();
+                    const x = event.clientX - rect.left - rect.width / 2;
+                    if (x < 0) {
+                      keys.current['arrowleft'] = true;
+                      keys.current['a'] = true;
+                    } else {
+                      keys.current['arrowright'] = true;
+                      keys.current['d'] = true;
+                    }
+                  }}
+                  onMouseMove={(event) => {
+                    if (event.buttons === 1) {
+                      const rect = event.currentTarget.getBoundingClientRect();
+                      const x = event.clientX - rect.left - rect.width / 2;
+                      if (x < -10) {
+                        keys.current['arrowleft'] = true;
+                        keys.current['a'] = true;
+                        keys.current['arrowright'] = false;
+                        keys.current['d'] = false;
+                      } else if (x > 10) {
+                        keys.current['arrowright'] = true;
+                        keys.current['d'] = true;
+                        keys.current['arrowleft'] = false;
+                        keys.current['a'] = false;
+                      } else {
+                        keys.current['arrowleft'] = false;
+                        keys.current['a'] = false;
+                        keys.current['arrowright'] = false;
+                        keys.current['d'] = false;
+                      }
+                    }
+                  }}
+                  onMouseUp={() => {
+                    keys.current['arrowleft'] = false;
+                    keys.current['a'] = false;
+                    keys.current['arrowright'] = false;
+                    keys.current['d'] = false;
+                  }}
+                  onMouseLeave={() => {
+                    keys.current['arrowleft'] = false;
+                    keys.current['a'] = false;
+                    keys.current['arrowright'] = false;
+                    keys.current['d'] = false;
+                  }}
+                  onTouchStart={(event) => {
+                    event.preventDefault();
+                    const rect = event.currentTarget.getBoundingClientRect();
+                    const touch = event.touches[0];
+                    const x = touch.clientX - rect.left - rect.width / 2;
+                    if (x < 0) {
+                      keys.current['arrowleft'] = true;
+                      keys.current['a'] = true;
+                    } else {
+                      keys.current['arrowright'] = true;
+                      keys.current['d'] = true;
+                    }
+                  }}
+                  onTouchMove={(event) => {
+                    event.preventDefault();
+                    const rect = event.currentTarget.getBoundingClientRect();
+                    const touch = event.touches[0];
+                    const x = touch.clientX - rect.left - rect.width / 2;
+                    if (x < -10) {
+                      keys.current['arrowleft'] = true;
+                      keys.current['a'] = true;
+                      keys.current['arrowright'] = false;
+                      keys.current['d'] = false;
+                    } else if (x > 10) {
+                      keys.current['arrowright'] = true;
+                      keys.current['d'] = true;
+                      keys.current['arrowleft'] = false;
+                      keys.current['a'] = false;
+                    } else {
+                      keys.current['arrowleft'] = false;
+                      keys.current['a'] = false;
+                      keys.current['arrowright'] = false;
+                      keys.current['d'] = false;
+                    }
+                  }}
+                  onTouchEnd={(event) => {
+                    event.preventDefault();
+                    keys.current['arrowleft'] = false;
+                    keys.current['a'] = false;
+                    keys.current['arrowright'] = false;
+                    keys.current['d'] = false;
+                  }}
+                >
+                  <svg viewBox="0 0 100 100" className="w-full h-full select-none" style={{ transform: `rotate(${uiWheelAngle}deg)`, transition: 'transform 75ms cubic-bezier(0.1, 0.8, 0.3, 1)' }}>
+                    {/* Outer shadow ring */}
+                    <circle cx="50" cy="50" r="45" fill="none" stroke="#09090b" strokeWidth="8" className="opacity-80" />
+                    
+                    {/* Leather/Plastic steering wheel outer rim */}
+                    <circle cx="50" cy="50" r="45" fill="none" stroke="#262626" strokeWidth="6" />
+                    {/* Decorative stitch thread indicator */}
+                    <circle cx="50" cy="50" r="45" fill="none" stroke="#404040" strokeWidth="1.5" strokeDasharray="5 7" />
+                    
+                    {/* Neon blue grip plates at 10 and 2 positions */}
+                    <path d="M 23 27 A 45 45 0 0 1 34 18" fill="none" stroke="#22d3ee" strokeWidth="7" strokeLinecap="round" className="drop-shadow-[0_0_5px_rgba(34,211,238,0.7)]" />
+                    <path d="M 66 18 A 45 45 0 0 1 77 27" fill="none" stroke="#22d3ee" strokeWidth="7" strokeLinecap="round" className="drop-shadow-[0_0_5px_rgba(34,211,238,0.7)]" />
+                    
+                    {/* Internal spokes */}
+                    <path d="M 12 50 L 36 50 C 38 50 39 52 39 54 L 37 58" fill="none" stroke="url(#spoke-metallic)" strokeWidth="4.5" strokeLinecap="round" />
+                    <path d="M 88 50 L 64 50 C 62 50 61 52 61 54 L 63 58" fill="none" stroke="url(#spoke-metallic)" strokeWidth="4.5" strokeLinecap="round" strokeLinejoin="round" />
+                    <path d="M 50 88 L 50 63" fill="none" stroke="url(#spoke-metallic)" strokeWidth="5" strokeLinecap="round" />
+                    
+                    {/* Central horn button/hub */}
+                    <circle cx="50" cy="50" r="14" fill="#171717" stroke="#3f3f46" strokeWidth="2.5" />
+                    <circle cx="50" cy="50" r="11" fill="url(#hub-center-glow)" stroke="#09090b" strokeWidth="1" />
+                    
+                    {/* Mini dynamic indicator light */}
+                    <circle cx="50" cy="50" r="4" fill={uiWheelAngle !== 0 ? "#06b6d4" : "#171717"} className="transition-colors duration-150" />
+
+                    <defs>
+                      <radialGradient id="hub-center-glow" cx="50%" cy="50%" r="50%">
+                        <stop offset="0%" stopColor="#27272a" />
+                        <stop offset="100%" stopColor="#09090b" />
+                      </radialGradient>
+                      <linearGradient id="spoke-metallic" x1="0%" y1="0%" x2="100%" y2="0%">
+                        <stop offset="0%" stopColor="#52525b" />
+                        <stop offset="50%" stopColor="#d4d4d8" />
+                        <stop offset="100%" stopColor="#27272a" />
+                      </linearGradient>
+                    </defs>
+                  </svg>
+
+                  <span className="absolute text-[8px] font-black text-neutral-400 uppercase tracking-widest pointer-events-none -mt-1 select-none">
+                    VOLANTE
+                  </span>
+                </div>
+              </div>
+
+              {/* Mid Stats Screen */}
+              <div className="pointer-events-auto bg-black/80 backdrop-blur-md py-1.5 px-3 rounded-2xl border border-neutral-800/85 flex flex-col gap-0.5 shadow-2xl min-w-[100px] sm:min-w-[130px] self-end mb-2">
+                <div className="flex justify-between items-center text-[9px] font-black text-neutral-400 uppercase">
+                  <span>Puntos</span>
+                  <span className="text-white font-black tabular-nums">{uiScore}</span>
+                </div>
+                <div className="h-[1px] bg-neutral-800 w-full" />
+                <div className="flex justify-between items-center text-[9px] font-black text-neutral-400 uppercase">
+                  <span>Distancia</span>
+                  <span className="text-white font-black tabular-nums">{Math.floor(uiDistance)}KM</span>
+                </div>
+              </div>
+
+              {/* Accel & Brake Pedals Grid */}
+              <div className="pointer-events-auto bg-black/55 backdrop-blur-md p-2 rounded-3xl border border-neutral-800/80 shadow-2xl flex items-end gap-2 shrink-0">
+                {/* Brake Pedal (Short, Red) */}
+                <button
+                  className="w-12 h-14 sm:w-14 sm:h-16 rounded-xl bg-gradient-to-b from-rose-600 to-rose-800 active:from-rose-500 active:to-rose-700 border-2 border-rose-500/40 flex flex-col items-center justify-center select-none cursor-pointer shadow-md active:scale-95 transition-transform text-white"
+                  onMouseDown={() => { keys.current['arrowdown'] = true; keys.current[' '] = true; }}
+                  onMouseUp={() => { keys.current['arrowdown'] = false; keys.current[' '] = false; }}
+                  onMouseLeave={() => { keys.current['arrowdown'] = false; keys.current[' '] = false; }}
+                  onTouchStart={(e) => { e.preventDefault(); keys.current['arrowdown'] = true; keys.current[' '] = true; }}
+                  onTouchEnd={(e) => { e.preventDefault(); keys.current['arrowdown'] = false; keys.current[' '] = false; }}
+                >
+                  <div className="flex flex-col gap-[2px] w-6 opacity-40 mb-1">
+                    <div className="h-[2px] bg-white rounded-full" />
+                    <div className="h-[2px] bg-white rounded-full" />
+                  </div>
+                  <span className="text-[8px] font-black tracking-widest text-rose-100 uppercase leading-none">Freno</span>
+                </button>
+
+                {/* Accelerator Pedal (Tall, Green) */}
+                <button
+                  className="w-10 h-16 sm:w-12 sm:h-20 rounded-xl bg-gradient-to-b from-emerald-500 to-emerald-700 active:from-emerald-400 active:to-emerald-600 border-2 border-emerald-400/40 flex flex-col items-center justify-between py-2.5 select-none cursor-pointer shadow-md active:scale-95 transition-transform text-white"
+                  onMouseDown={() => { keys.current['arrowup'] = true; }}
+                  onMouseUp={() => { keys.current['arrowup'] = false; }}
+                  onMouseLeave={() => { keys.current['arrowup'] = false; }}
+                  onTouchStart={(e) => { e.preventDefault(); keys.current['arrowup'] = true; }}
+                  onTouchEnd={(e) => { e.preventDefault(); keys.current['arrowup'] = false; }}
+                >
+                  <ArrowUp className="w-3.5 h-3.5 text-emerald-200 animate-bounce" />
+                  <div className="flex flex-col gap-[3px] w-4 opacity-40 my-1">
+                    <div className="h-[1.5px] bg-white rounded-full" />
+                    <div className="h-[1.5px] bg-white rounded-full" />
+                  </div>
+                  <span className="text-[8px] font-black tracking-widest text-emerald-100 uppercase leading-none font-black">GÁS</span>
+                </button>
+              </div>
+
+            </div>
+          )}
+
+          {/* Overlays (Start, Gameover, Countdown) */}
           <AnimatePresence>
             {gameState === 'start' && (
               <motion.div
@@ -1236,249 +1480,6 @@ export default function App() {
               </motion.div>
             )}
           </AnimatePresence>
-        </div>
-
-        {/* Dashboard and Virtual Controllers Area below Canvas */}
-        <div className="h-[270px] sm:h-[295px] shrink-0 bg-neutral-900 border-t-2 border-neutral-800 flex flex-col p-4 justify-between relative overflow-hidden">
-          
-          {/* Carbon Fiber Background Effect */}
-          <div className="absolute inset-0 bg-[radial-gradient(#1e293b_1px,transparent_1px)] [background-size:16px_16px] opacity-10 pointer-events-none" />
-
-          {/* Diagnostic Console / Performance Screen */}
-          <div className="grid grid-cols-2 gap-3 relative z-10 select-none">
-            {/* Record / Max Combo card */}
-            <div className="bg-neutral-950 p-2.5 rounded-2xl border border-neutral-800 flex flex-col justify-between">
-              <span className="text-[9px] font-black text-cyan-400 uppercase tracking-widest flex items-center gap-1.5">
-                <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" /> RÉCORD
-              </span>
-              <div className="flex items-baseline gap-1 mt-1">
-                <span className="text-2xl font-black tabular-nums tracking-tight italic text-blue-400">
-                  {highScore}
-                </span>
-                <span className="text-[8px] font-bold text-neutral-600">PTS</span>
-              </div>
-              <div className="text-[8px] text-neutral-500 font-extrabold tracking-wider mt-1 uppercase w-full truncate">
-                RÉCORD HISTÓRICO
-              </div>
-            </div>
-
-            {/* Drift Telematics Card */}
-            <div className="bg-neutral-950 p-2.5 rounded-2xl border border-neutral-800 flex flex-col justify-between">
-              <span className="text-[9px] font-black text-amber-500 uppercase tracking-widest flex items-center gap-1.5">
-                <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-bounce" /> MULTIPLICADOR
-              </span>
-              <div className="flex items-baseline gap-1 mt-1">
-                <span className={`text-2xl font-black tabular-nums tracking-tight italic transition-all duration-100 ${isDriftingRef.current ? 'text-amber-400 scale-105' : 'text-neutral-500'}`}>
-                  x{isDriftingRef.current ? Math.min(5, 1 + Math.floor(driftComboRef.current / 30)) : 1}
-                </span>
-                <span className="text-[8px] font-bold text-neutral-600">MULT</span>
-              </div>
-              <div className="h-1 bg-neutral-900 rounded-full overflow-hidden mt-1 text-[8px] font-bold">
-                <div 
-                  className="h-full bg-gradient-to-r from-amber-500 to-amber-300 rounded-full transition-all duration-150"
-                  style={{ width: `${isDriftingRef.current ? Math.min(100, (driftComboRef.current % 30) * 3.3) : 0}%` }}
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Virtual Steering and Pedals Pad Deck */}
-          <div className="flex items-center justify-between mt-3 relative z-10 gap-2">
-            
-            {/* Direct Interactive Steering Wheel (Volante de Control) */}
-            <div 
-              className="relative w-24 h-24 sm:w-28 sm:h-28 flex items-center justify-center cursor-ew-resize touch-none select-none active:scale-95 transition-transform"
-              onMouseDown={(event) => {
-                const rect = event.currentTarget.getBoundingClientRect();
-                const x = event.clientX - rect.left - rect.width / 2;
-                if (x < 0) {
-                  keys.current['arrowleft'] = true;
-                  keys.current['a'] = true;
-                } else {
-                  keys.current['arrowright'] = true;
-                  keys.current['d'] = true;
-                }
-              }}
-              onMouseMove={(event) => {
-                if (event.buttons === 1) {
-                  const rect = event.currentTarget.getBoundingClientRect();
-                  const x = event.clientX - rect.left - rect.width / 2;
-                  if (x < -10) {
-                    keys.current['arrowleft'] = true;
-                    keys.current['a'] = true;
-                    keys.current['arrowright'] = false;
-                    keys.current['d'] = false;
-                  } else if (x > 10) {
-                    keys.current['arrowright'] = true;
-                    keys.current['d'] = true;
-                    keys.current['arrowleft'] = false;
-                    keys.current['a'] = false;
-                  } else {
-                    keys.current['arrowleft'] = false;
-                    keys.current['a'] = false;
-                    keys.current['arrowright'] = false;
-                    keys.current['d'] = false;
-                  }
-                }
-              }}
-              onMouseUp={() => {
-                keys.current['arrowleft'] = false;
-                keys.current['a'] = false;
-                keys.current['arrowright'] = false;
-                keys.current['d'] = false;
-              }}
-              onMouseLeave={() => {
-                keys.current['arrowleft'] = false;
-                keys.current['a'] = false;
-                keys.current['arrowright'] = false;
-                keys.current['d'] = false;
-              }}
-              onTouchStart={(event) => {
-                event.preventDefault();
-                const rect = event.currentTarget.getBoundingClientRect();
-                const touch = event.touches[0];
-                const x = touch.clientX - rect.left - rect.width / 2;
-                if (x < 0) {
-                  keys.current['arrowleft'] = true;
-                  keys.current['a'] = true;
-                } else {
-                  keys.current['arrowright'] = true;
-                  keys.current['d'] = true;
-                }
-              }}
-              onTouchMove={(event) => {
-                event.preventDefault();
-                const rect = event.currentTarget.getBoundingClientRect();
-                const touch = event.touches[0];
-                const x = touch.clientX - rect.left - rect.width / 2;
-                if (x < -10) {
-                  keys.current['arrowleft'] = true;
-                  keys.current['a'] = true;
-                  keys.current['arrowright'] = false;
-                  keys.current['d'] = false;
-                } else if (x > 10) {
-                  keys.current['arrowright'] = true;
-                  keys.current['d'] = true;
-                  keys.current['arrowleft'] = false;
-                  keys.current['a'] = false;
-                } else {
-                  keys.current['arrowleft'] = false;
-                  keys.current['a'] = false;
-                  keys.current['arrowright'] = false;
-                  keys.current['d'] = false;
-                }
-              }}
-              onTouchEnd={(event) => {
-                event.preventDefault();
-                keys.current['arrowleft'] = false;
-                keys.current['a'] = false;
-                keys.current['arrowright'] = false;
-                keys.current['d'] = false;
-              }}
-            >
-              <svg viewBox="0 0 100 100" className="w-full h-full select-none" style={{ transform: `rotate(${uiWheelAngle}deg)`, transition: 'transform 75ms cubic-bezier(0.1, 0.8, 0.3, 1)' }}>
-                {/* Outer shadow ring */}
-                <circle cx="50" cy="50" r="45" fill="none" stroke="#09090b" strokeWidth="8" className="opacity-80" />
-                
-                {/* Leather/Plastic steering wheel outer rim */}
-                <circle cx="50" cy="50" r="45" fill="none" stroke="#262626" strokeWidth="6" />
-                {/* Decorative stitch thread indicator */}
-                <circle cx="50" cy="50" r="45" fill="none" stroke="#404040" strokeWidth="1.5" strokeDasharray="5 7" />
-                
-                {/* Neon blue grip plates at 10 and 2 positions */}
-                <path d="M 23 27 A 45 45 0 0 1 34 18" fill="none" stroke="#22d3ee" strokeWidth="7" strokeLinecap="round" className="drop-shadow-[0_0_5px_rgba(34,211,238,0.7)]" />
-                <path d="M 66 18 A 45 45 0 0 1 77 27" fill="none" stroke="#22d3ee" strokeWidth="7" strokeLinecap="round" className="drop-shadow-[0_0_5px_rgba(34,211,238,0.7)]" />
-                
-                {/* Internal spokes */}
-                {/* Left spoke */}
-                <path d="M 12 50 L 36 50 C 38 50 39 52 39 54 L 37 58" fill="none" stroke="url(#spoke-metallic)" strokeWidth="4.5" strokeLinecap="round" />
-                {/* Right spoke */}
-                <path d="M 88 50 L 64 50 C 62 50 61 52 61 54 L 63 58" fill="none" stroke="url(#spoke-metallic)" strokeWidth="4.5" strokeLinecap="round" strokeLinejoin="round" />
-                {/* Bottom spoke */}
-                <path d="M 50 88 L 50 63" fill="none" stroke="url(#spoke-metallic)" strokeWidth="5" strokeLinecap="round" />
-                
-                {/* Central horn button/hub */}
-                <circle cx="50" cy="50" r="14" fill="#171717" stroke="#3f3f46" strokeWidth="2.5" />
-                <circle cx="50" cy="50" r="11" fill="url(#hub-center-glow)" stroke="#09090b" strokeWidth="1" />
-                
-                {/* Mini racing flag icon or drift indicator glow in the middle of steering wheel */}
-                <circle cx="50" cy="50" r="4" fill={uiWheelAngle !== 0 ? "#06b6d4" : "#171717"} className="transition-colors duration-150" />
-
-                <defs>
-                  <radialGradient id="hub-center-glow" cx="50%" cy="50%" r="50%">
-                    <stop offset="0%" stopColor="#27272a" />
-                    <stop offset="100%" stopColor="#09090b" />
-                  </radialGradient>
-                  <linearGradient id="spoke-metallic" x1="0%" y1="0%" x2="100%" y2="0%">
-                    <stop offset="0%" stopColor="#52525b" />
-                    <stop offset="50%" stopColor="#d4d4d8" />
-                    <stop offset="100%" stopColor="#27272a" />
-                  </linearGradient>
-                </defs>
-              </svg>
-
-              {/* Tiny central label */}
-              <span className="absolute text-[8px] font-black text-neutral-500 uppercase tracking-widest pointer-events-none -mt-1 hover:text-white transition-colors">
-                VOLANTE
-              </span>
-            </div>
-
-            {/* Mid Stats Screen */}
-            <div className="flex-1 flex flex-col items-center justify-center text-center px-1">
-              <div className="bg-neutral-950 py-1.5 px-3 rounded-xl border border-neutral-800 w-full flex flex-col gap-0.5 shadow-md">
-                <div className="flex justify-between items-center text-[9px] font-black text-neutral-500 uppercase">
-                  <span>Puntos</span>
-                  <span className="text-neutral-300 tabular-nums font-bold">{uiScore}</span>
-                </div>
-                <div className="h-[1px] bg-neutral-900 w-full" />
-                <div className="flex justify-between items-center text-[9px] font-black text-neutral-500 uppercase">
-                  <span>Distancia</span>
-                  <span className="text-neutral-300 tabular-nums font-bold">{Math.floor(uiDistance)}KM</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Accel & Brake Pedals Grid */}
-            <div className="flex items-end gap-2 shrink-0">
-              {/* Brake Pedal (Short, Red) */}
-              <button
-                className="w-14 h-16 rounded-xl bg-gradient-to-b from-rose-600 to-rose-800 active:from-rose-500 active:to-rose-700 border-2 border-rose-500/40 flex flex-col items-center justify-center select-none cursor-pointer shadow-md active:scale-95 transition-transform text-white"
-                onMouseDown={() => { keys.current['arrowdown'] = true; keys.current[' '] = true; }}
-                onMouseUp={() => { keys.current['arrowdown'] = false; keys.current[' '] = false; }}
-                onMouseLeave={() => { keys.current['arrowdown'] = false; keys.current[' '] = false; }}
-                onTouchStart={(e) => { e.preventDefault(); keys.current['arrowdown'] = true; keys.current[' '] = true; }}
-                onTouchEnd={(e) => { e.preventDefault(); keys.current['arrowdown'] = false; keys.current[' '] = false; }}
-              >
-                <div className="flex flex-col gap-[2px] w-8 opacity-40 mb-1">
-                  <div className="h-[2px] bg-white rounded-full" />
-                  <div className="h-[2px] bg-white rounded-full" />
-                  <div className="h-[2px] bg-white rounded-full" />
-                </div>
-                <span className="text-[8px] font-black tracking-widest text-rose-100 uppercase leading-none">Freno</span>
-              </button>
-
-              {/* Accelerator Pedal (Tall, Green) */}
-              <button
-                className="w-12 h-20 rounded-xl bg-gradient-to-b from-emerald-500 to-emerald-700 active:from-emerald-400 active:to-emerald-600 border-2 border-emerald-400/40 flex flex-col items-center justify-between py-2.5 select-none cursor-pointer shadow-md active:scale-95 transition-transform text-white"
-                onMouseDown={() => { keys.current['arrowup'] = true; }}
-                onMouseUp={() => { keys.current['arrowup'] = false; }}
-                onMouseLeave={() => { keys.current['arrowup'] = false; }}
-                onTouchStart={(e) => { e.preventDefault(); keys.current['arrowup'] = true; }}
-                onTouchEnd={(e) => { e.preventDefault(); keys.current['arrowup'] = false; }}
-              >
-                <ArrowUp className="w-4 h-4 text-emerald-200 animate-bounce" />
-                <div className="flex flex-col gap-[3px] w-5 opacity-40 my-1">
-                  <div className="h-[1.5px] bg-white rounded-full" />
-                  <div className="h-[1.5px] bg-white rounded-full" />
-                  <div className="h-[1.5px] bg-white rounded-full" />
-                  <div className="h-[1.5px] bg-white rounded-full" />
-                </div>
-                <span className="text-[8px] font-black tracking-widest text-emerald-100 uppercase leading-none">GÁS</span>
-              </button>
-            </div>
-
-          </div>
-
         </div>
 
       </div>
