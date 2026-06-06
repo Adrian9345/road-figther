@@ -311,8 +311,12 @@ export default function App() {
     
     // Use an aggressive, multi-frequency wave for sharp, challenging curves (pronunciadas)
     for (let i = 0; i < totalSegments; i++) {
-      // Mix high and medium amplitude sine waves for intense drift gameplay (making curves significantly tighter/closed)
-      trackCurvature.current[i] = Math.sin(i * 0.20) * 880 + Math.sin(i * 0.08) * 320;
+      if (i < 50) {
+        trackCurvature.current[i] = 0;
+      } else {
+        // Mix high and medium amplitude sine waves for intense drift gameplay (making curves significantly tighter/closed)
+        trackCurvature.current[i] = Math.sin(i * 0.20) * 880 + Math.sin(i * 0.08) * 320;
+      }
     }
     
     // Extra smoothing for ultra-fluid circular motion
@@ -322,10 +326,12 @@ export default function App() {
       trackCurvature.current[i] = sum / 11;
     }
     
-    // Setup Starting Grid: 2 cars in a straight line
-    const yOffset = CANVAS_HEIGHT - 300;
-    for (let col = 0; col < 2; col++) {
-      spawnEntity(true, yOffset, col);
+    // Setup Starting Grid: 10 cars in rows
+    for (let i = 0; i < 10; i++) {
+        const row = Math.floor(i / 2);
+        const col = i % 2;
+        const yOffset = CANVAS_HEIGHT - 300 - (row * 150); // space them out vertically
+        spawnEntity(true, yOffset, col);
     }
     
     containerRef.current?.focus();
@@ -350,7 +356,11 @@ export default function App() {
     const totalSegments = Math.ceil(TOTAL_RACE_DISTANCE / segmentSize) + 10;
     trackCurvature.current = new Array(totalSegments).fill(0);
     for (let i = 0; i < totalSegments; i++) {
-      trackCurvature.current[i] = Math.sin(i * 0.20) * 880 + Math.sin(i * 0.08) * 320;
+      if (i < 50) {
+        trackCurvature.current[i] = 0;
+      } else {
+        trackCurvature.current[i] = Math.sin(i * 0.20) * 880 + Math.sin(i * 0.08) * 320;
+      }
     }
     for (let i = 5; i < totalSegments - 5; i++) {
       let sum = 0;
