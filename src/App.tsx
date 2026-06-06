@@ -707,28 +707,36 @@ export default function App() {
   return (
     <div className="min-h-screen bg-neutral-950 text-white flex items-center justify-center p-2 sm:p-4 font-sans overflow-hidden select-none">
       
-      {/* smartphone mockup shell */}
-      <div className="w-full h-full max-h-screen sm:w-[410px] sm:h-[840px] sm:max-h-[95vh] sm:rounded-[50px] sm:border-[10px] sm:border-neutral-800 relative bg-neutral-950 flex flex-col overflow-hidden sm:shadow-[0_0_80px_rgba(0,0,0,0.85)]">
-        
-        {/* simulated status bar */}
-        <div className="flex h-[35px] items-center justify-between px-6 bg-neutral-900/40 text-xs text-neutral-400 select-none z-30 shrink-0 border-b border-neutral-900">
-          <span className="font-extrabold text-[11px] tracking-tight text-neutral-300">09:41</span>
-          {/* speaker / notch */}
-          <div className="hidden sm:block w-[110px] h-4 bg-neutral-950 rounded-b-xl border-x border-b border-neutral-900 -mt-1" />
-          <div className="flex items-center gap-1.5 text-[10px] font-bold text-neutral-400">
-            <span className="text-[9px]">5G</span>
-            <span>📶</span>
-            <span>88% 🔋</span>
-          </div>
-        </div>
+      {/* Outer interactive hardware wrapper representing a high-performance 1080x1920 smartphone */}
+      <div className="relative p-2.5 sm:p-3 select-none flex items-center justify-center">
+        {/* Physical volume button details on left */}
+        <div className="absolute left-[0px] top-[15%] w-[3px] h-[50px] bg-neutral-700/90 rounded-l shadow" />
+        <div className="absolute left-[0px] top-[23%] w-[3px] h-[50px] bg-neutral-700/90 rounded-l shadow" />
+        {/* Power button on right */}
+        <div className="absolute right-[0px] top-[19%] w-[3px] h-[72px] bg-neutral-700/90 rounded-r shadow" />
 
-        {/* Game Canvas Container */}
-        <div 
-          ref={containerRef}
-          tabIndex={0}
-          className="relative w-full aspect-[390/500] bg-neutral-900 focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all shrink-0"
-          onMouseDown={() => containerRef.current?.focus()}
-        >
+        {/* smartphone mockup shell (scaled 9:16 aspect ratio, representation of a 1080x1920 HD mobile layout) */}
+        <div className="w-[330px] xs:w-[360px] sm:w-[390px] md:w-[410px] lg:w-[430px] h-auto aspect-[9/16] rounded-[44px] sm:rounded-[48px] border-[10px] sm:border-[12px] border-neutral-800 relative bg-neutral-950 flex flex-col overflow-hidden sm:shadow-[0_0_80px_rgba(0,0,0,0.85)] outline-none">
+          
+          {/* simulated status bar */}
+          <div className="flex h-[32px] items-center justify-between px-5 bg-neutral-900/40 text-[10px] text-neutral-400 select-none z-30 shrink-0 border-b border-neutral-900">
+            <span className="font-extrabold tracking-tight text-neutral-300">09:41</span>
+            {/* speaker / notch */}
+            <div className="hidden sm:block w-[90px] h-3.5 bg-neutral-950 rounded-b-xl border-x border-b border-neutral-900 -mt-1" />
+            <div className="flex items-center gap-1 text-[9px] font-bold text-neutral-400">
+              <span className="text-[8px] bg-neutral-800 px-1 py-0.2 rounded text-neutral-300 font-mono">1080x1920 HD</span>
+              <span>📶</span>
+              <span>88% 🔋</span>
+            </div>
+          </div>
+
+          {/* Game Canvas Container */}
+          <div 
+            ref={containerRef}
+            tabIndex={0}
+            className="relative w-full aspect-[390/500] bg-neutral-900 focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all shrink-0"
+            onMouseDown={() => containerRef.current?.focus()}
+          >
           <canvas
             ref={canvasRef}
             width={CANVAS_WIDTH}
@@ -1047,5 +1055,6 @@ export default function App() {
 
       </div>
     </div>
-  );
+  </div>
+);
 }
