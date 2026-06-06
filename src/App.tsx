@@ -5,14 +5,14 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Trophy, Zap, Fuel, AlertTriangle, Play, RotateCcw, Flag, BookOpen, Map as MapIcon } from 'lucide-react';
+import { Trophy, Zap, Fuel, AlertTriangle, Play, RotateCcw, Flag, BookOpen, Map as MapIcon, ChevronLeft, ChevronRight, ArrowUp } from 'lucide-react';
 
 // Constants
 const ROAD_WIDTH = 340;
 const CAR_WIDTH = 30;
 const CAR_HEIGHT = 50;
-const CANVAS_WIDTH = 600;
-const CANVAS_HEIGHT = 800;
+const CANVAS_WIDTH = 390;
+const CANVAS_HEIGHT = 500;
 const INITIAL_FUEL = 100;
 const FUEL_CONSUMPTION_RATE = 0.04;
 const MAX_SPEED = 10; // 100 km/h
@@ -81,10 +81,24 @@ export default function App() {
     return c1 + (c2 - c1) * t;
   };
 
-  // Helper to get road center at a specific Y coordinate
+  // Helper to get road center at a specific Y coordinate with 2.5D visual curved projection
   const getRoadXAt = (y: number, distance: number) => {
-    // Road is now always centered visually
-    return (CANVAS_WIDTH - ROAD_WIDTH) / 2;
+    const baseOffset = (CANVAS_WIDTH - ROAD_WIDTH) / 2;
+    
+    // Smooth quadratic ease-in for visual projection perspective:
+    const lookAheadFactor = (CANVAS_HEIGHT - y) / CANVAS_HEIGHT; // 0 (bottom) to 1 (top)
+    const perspectiveFactor = Math.pow(lookAheadFactor, 1.8);
+    
+    // Look ahead on the track based on perspective height:
+    const distAhead = perspectiveFactor * 250;
+    
+    const currentCurveVal = getRoadCurveAtDistance(distance);
+    const targetCurveVal = getRoadCurveAtDistance(distance + distAhead);
+    
+    // Scale curve Offset to fit the 390px mobile view nicely
+    const curveOffset = (targetCurveVal - currentCurveVal) * 0.15;
+    
+    return baseOffset + curveOffset;
   };
 
   const getRoadAngleAt = (y: number, distance: number) => {
@@ -392,7 +406,7 @@ export default function App() {
       const roadX = getRoadXAt(-100, distanceRef.current);
       // Place sign on the left or right side outside the road (further into the grass)
       const side = Math.random() > 0.5 ? 1 : -1;
-      const laneOffset = side === 1 ? ROAD_WIDTH + 80 : -110;
+      const laneOffset = side === 1 ? ROAD_WIDTH + 14 : -13;
       const markerValue = Math.floor(distanceRef.current / 100); // Show km
       
       entities.current.push({
@@ -436,9 +450,9 @@ export default function App() {
     for (let y = 0; y < CANVAS_HEIGHT; y += segmentHeight) {
       const roadX = getRoadXAt(y, distanceRef.current);
       
-      // Draw Stairs and Audience on the sides
-      const stairWidth = 60;
-      const stairOffset = 50;
+      // Draw Stairs and Audience on the sides (optimized for 390px mobile view)
+      const stairWidth = 10;
+      const stairOffset = 15;
       
       // Left Stairs
       ctx.fillStyle = '#4b5563'; // Concrete color
@@ -449,15 +463,15 @@ export default function App() {
       // Audience (Small colorful dots)
       if (Math.floor((y - distanceRef.current * 100) / 20) % 2 === 0) {
         const colors = ['#ef4444', '#3b82f6', '#facc15', '#fff', '#22c55e'];
-        for (let i = 0; i < 3; i++) {
+        for (let i = 0; i < 2; i++) {
           ctx.fillStyle = colors[(Math.floor(y / 10) + i) % colors.length];
           // Left audience
           ctx.beginPath();
-          ctx.arc(roadX - stairOffset - stairWidth + 10 + i * 20, y + 2, 3, 0, Math.PI * 2);
+          ctx.arc(roadX - stairOffset - stairWidth + 4 + i * 5, y + 2, 2, 0, Math.PI * 2);
           ctx.fill();
           // Right audience
           ctx.beginPath();
-          ctx.arc(roadX + ROAD_WIDTH + stairOffset + 10 + i * 20, y + 2, 3, 0, Math.PI * 2);
+          ctx.arc(roadX + ROAD_WIDTH + stairOffset + 4 + i * 5, y + 2, 2, 0, Math.PI * 2);
           ctx.fill();
         }
       }
@@ -602,31 +616,11 @@ export default function App() {
     
     ctx.restore();
 
-    // HUD - Speed & Fuel
-    ctx.fillStyle = 'rgba(0,0,0,0.6)';
-    ctx.roundRect(10, 10, 180, 100, 15);
-    ctx.fill();
-
-    ctx.fillStyle = '#fff';
-    ctx.font = 'bold 16px sans-serif';
-    ctx.fillText('SPEED', 25, 35);
-    ctx.font = 'bold 24px sans-serif';
-    ctx.fillText(`${Math.floor(speedRef.current * 10)} km/h`, 25, 60);
-
-    ctx.fillStyle = '#fff';
-    ctx.font = 'bold 16px sans-serif';
-    ctx.fillText('FUEL', 25, 85);
-    const fuelWidth = 100;
-    ctx.fillStyle = '#333';
-    ctx.fillRect(80, 75, fuelWidth, 12);
-    ctx.fillStyle = fuelRef.current < 25 ? '#ef4444' : '#22c55e';
-    ctx.fillRect(80, 75, (fuelRef.current / INITIAL_FUEL) * fuelWidth, 12);
-
-    // Minimap
-    const mapWidth = 60;
-    const mapHeight = 250;
-    const mapX = CANVAS_WIDTH - 80;
-    const mapY = 20;
+    // Minimap (Optimized for 390px canvas)
+    const mapWidth = 35;
+    const mapHeight = 150;
+    const mapX = CANVAS_WIDTH - 50;
+    const mapY = 15;
 
     ctx.fillStyle = 'rgba(0,0,0,0.6)';
     ctx.roundRect(mapX - 10, mapY - 10, mapWidth + 20, mapHeight + 20, 10);
@@ -711,21 +705,35 @@ export default function App() {
   }, [uiScore, highScore]);
 
   return (
-    <div className="min-h-screen bg-neutral-950 text-white flex items-center justify-center p-4 font-sans overflow-hidden select-none">
-      <div className="relative flex flex-col lg:flex-row gap-8 items-center lg:items-start max-w-7xl w-full">
+    <div className="min-h-screen bg-neutral-950 text-white flex items-center justify-center p-2 sm:p-4 font-sans overflow-hidden select-none">
+      
+      {/* smartphone mockup shell */}
+      <div className="w-full h-full max-h-screen sm:w-[410px] sm:h-[840px] sm:max-h-[95vh] sm:rounded-[50px] sm:border-[10px] sm:border-neutral-800 relative bg-neutral-950 flex flex-col overflow-hidden sm:shadow-[0_0_80px_rgba(0,0,0,0.85)]">
         
+        {/* simulated status bar */}
+        <div className="flex h-[35px] items-center justify-between px-6 bg-neutral-900/40 text-xs text-neutral-400 select-none z-30 shrink-0 border-b border-neutral-900">
+          <span className="font-extrabold text-[11px] tracking-tight text-neutral-300">09:41</span>
+          {/* speaker / notch */}
+          <div className="hidden sm:block w-[110px] h-4 bg-neutral-950 rounded-b-xl border-x border-b border-neutral-900 -mt-1" />
+          <div className="flex items-center gap-1.5 text-[10px] font-bold text-neutral-400">
+            <span className="text-[9px]">5G</span>
+            <span>📶</span>
+            <span>88% 🔋</span>
+          </div>
+        </div>
+
         {/* Game Canvas Container */}
         <div 
           ref={containerRef}
           tabIndex={0}
-          className="relative rounded-3xl overflow-hidden border-8 border-neutral-800 shadow-[0_0_50px_rgba(0,0,0,0.5)] bg-neutral-900 focus:outline-none focus:ring-4 focus:ring-blue-500/50 transition-all"
+          className="relative w-full aspect-[390/500] bg-neutral-900 focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all shrink-0"
           onMouseDown={() => containerRef.current?.focus()}
         >
           <canvas
             ref={canvasRef}
             width={CANVAS_WIDTH}
             height={CANVAS_HEIGHT}
-            className="block max-h-[75vh] w-auto lg:max-h-none"
+            className="w-full h-full block"
           />
 
           {/* Overlays */}
@@ -735,44 +743,44 @@ export default function App() {
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                className="absolute inset-0 bg-black/90 flex flex-col items-center justify-center p-8 text-center z-20"
+                className="absolute inset-0 bg-black/90 flex flex-col items-center justify-center p-6 text-center z-20"
               >
                 <motion.div
                   initial={{ scale: 0.8, rotate: -5 }}
                   animate={{ scale: 1, rotate: 0 }}
-                  className="mb-8"
+                  className="mb-6"
                 >
-                  <div className="flex items-center justify-center gap-4 mb-4">
-                    <Flag className="w-12 h-12 text-blue-500" />
-                    <h1 className="text-7xl font-black italic tracking-tighter text-white drop-shadow-[0_0_15px_rgba(59,130,246,0.5)]">
+                  <div className="flex items-center justify-center gap-3 mb-2">
+                    <Flag className="w-8 h-8 text-blue-500" />
+                    <h1 className="text-4xl font-black italic tracking-tighter text-white drop-shadow-[0_0_15px_rgba(59,130,246,0.5)]">
                       CIRCUIT FIGHTER
                     </h1>
-                    <Flag className="w-12 h-12 text-blue-500 scale-x-[-1]" />
+                    <Flag className="w-8 h-8 text-blue-500 scale-x-[-1]" />
                   </div>
-                  <div className="h-1.5 bg-gradient-to-r from-transparent via-blue-500 to-transparent mt-2" />
+                  <div className="h-1 bg-gradient-to-r from-transparent via-blue-500 to-transparent mt-1" />
                 </motion.div>
 
-                <p className="text-neutral-400 mb-12 max-w-sm text-lg leading-relaxed font-medium">
-                  Professional racing circuit. Compete against rivals, manage energy, and master the curbs.
+                <p className="text-neutral-400 mb-8 max-w-xs text-sm leading-relaxed font-semibold">
+                  Professional racing circuit. Compete against rivals, manage energy, and master the curves.
                 </p>
 
                 <button
                   onClick={startGameSequence}
-                  className="group relative px-12 py-6 bg-blue-600 hover:bg-blue-500 transition-all rounded-2xl font-black text-3xl flex items-center gap-4 shadow-[0_0_40px_rgba(59,130,246,0.4)] active:scale-95"
+                  className="group relative px-8 py-4 bg-blue-600 hover:bg-blue-500 transition-all rounded-xl font-black text-xl flex items-center gap-3 shadow-[0_0_40px_rgba(59,130,246,0.4)] active:scale-95"
                 >
-                  <Play className="w-10 h-10 fill-current" />
+                  <Play className="w-6 h-6 fill-current" />
                   START RACE
                 </button>
 
-                <div className="mt-16 flex gap-12 text-neutral-500 font-bold uppercase tracking-[0.3em] text-[10px]">
-                  <div className="flex flex-col items-center gap-3">
-                    <kbd className="w-10 h-10 flex items-center justify-center bg-neutral-800 rounded-xl border-2 border-neutral-700 text-sm">W</kbd>
+                <div className="mt-10 flex gap-8 text-neutral-500 font-bold uppercase tracking-[0.2em] text-[9px]">
+                  <div className="flex flex-col items-center gap-2">
+                    <span className="px-2 py-1 bg-neutral-800 rounded-md border border-neutral-700 font-mono text-xs text-neutral-300">W</span>
                     <span>Throttle</span>
                   </div>
-                  <div className="flex flex-col items-center gap-3">
-                    <div className="flex gap-2">
-                      <kbd className="w-10 h-10 flex items-center justify-center bg-neutral-800 rounded-xl border-2 border-neutral-700 text-sm">A</kbd>
-                      <kbd className="w-10 h-10 flex items-center justify-center bg-neutral-800 rounded-xl border-2 border-neutral-700 text-sm">D</kbd>
+                  <div className="flex flex-col items-center gap-2">
+                    <div className="flex gap-1.5">
+                      <span className="px-2 py-1 bg-neutral-800 rounded-md border border-neutral-700 font-mono text-xs text-neutral-300">A</span>
+                      <span className="px-2 py-1 bg-neutral-800 rounded-md border border-neutral-700 font-mono text-xs text-neutral-300">D</span>
                     </div>
                     <span>Steering</span>
                   </div>
@@ -788,7 +796,7 @@ export default function App() {
                 exit={{ opacity: 0, scale: 0.2 }}
                 className="absolute inset-0 flex items-center justify-center z-30 pointer-events-none"
               >
-                <span className={`text-[15rem] font-black italic drop-shadow-[0_0_40px_rgba(255,255,255,0.6)] ${countdown === 0 ? 'text-green-500' : 'text-white'}`}>
+                <span className={`text-[10rem] font-black italic drop-shadow-[0_0_40px_rgba(255,255,255,0.6)] ${countdown === 0 ? 'text-green-500' : 'text-white'}`}>
                   {countdown > 0 ? countdown : 'GO!'}
                 </span>
               </motion.div>
@@ -798,7 +806,7 @@ export default function App() {
               <motion.div
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
-                className="absolute inset-0 bg-neutral-950/95 flex flex-col items-center justify-center p-8 text-center z-20"
+                className="absolute inset-0 bg-neutral-950/95 flex flex-col items-center justify-center p-4 text-center z-20 overflow-y-auto"
               >
                 {gameOverView === 'main' && (
                   <>
@@ -806,19 +814,19 @@ export default function App() {
                       animate={{ scale: [1, 1.1, 1], rotate: [0, 5, -5, 0] }}
                       transition={{ repeat: Infinity, duration: 3 }}
                     >
-                      <AlertTriangle className="w-28 h-28 text-red-500 mb-8" />
+                      <AlertTriangle className="w-16 h-16 text-red-500 mb-4" />
                     </motion.div>
                     
-                    <h2 className="text-7xl font-black mb-6 tracking-tighter italic">RACE OVER</h2>
+                    <h2 className="text-4xl font-black mb-4 tracking-tighter italic text-red-500">RACE OVER</h2>
                     
-                    <div className="grid grid-cols-2 gap-6 w-full max-w-md mb-12">
-                      <div className="bg-neutral-900 p-8 rounded-[2rem] border-2 border-neutral-800">
-                        <div className="text-neutral-500 text-xs font-black uppercase tracking-widest mb-2">Distance</div>
-                        <div className="text-4xl font-black tabular-nums">{Math.floor(uiDistance)}<span className="text-lg ml-1">KM</span></div>
+                    <div className="grid grid-cols-2 gap-4 w-full max-w-xs mb-6">
+                      <div className="bg-neutral-900 p-4 rounded-2xl border border-neutral-800">
+                        <div className="text-neutral-500 text-[10px] font-black uppercase tracking-widest mb-1">Distance</div>
+                        <div className="text-2xl font-black tabular-nums">{Math.floor(uiDistance)}<span className="text-sm ml-1">KM</span></div>
                       </div>
-                      <div className="bg-neutral-900 p-8 rounded-[2rem] border-2 border-neutral-800">
-                        <div className="text-neutral-500 text-xs font-black uppercase tracking-widest mb-2">Points</div>
-                        <div className="text-4xl font-black tabular-nums">{uiScore}</div>
+                      <div className="bg-neutral-900 p-4 rounded-2xl border border-neutral-800">
+                        <div className="text-neutral-500 text-[10px] font-black uppercase tracking-widest mb-1">Points</div>
+                        <div className="text-2xl font-black tabular-nums">{uiScore}</div>
                       </div>
                     </div>
                   </>
@@ -826,23 +834,21 @@ export default function App() {
 
                 {gameOverView === 'map' && (
                   <motion.div 
-                    initial={{ opacity: 0, y: 20 }}
+                    initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
-                    className="w-full max-w-2xl bg-neutral-900 p-10 rounded-[3rem] border-2 border-neutral-800 mb-12"
+                    className="w-full max-w-xs bg-neutral-900 p-5 rounded-2xl border border-neutral-800 mb-6"
                   >
-                    <div className="flex items-center gap-4 mb-8 justify-center">
-                      <MapIcon className="w-10 h-10 text-blue-500" />
-                      <h3 className="text-4xl font-black italic uppercase tracking-tighter">Circuito de Datos</h3>
+                    <div className="flex items-center gap-2 mb-4 justify-center">
+                      <MapIcon className="w-6 h-6 text-blue-500" />
+                      <h3 className="text-xl font-black italic uppercase tracking-tighter text-blue-400">Circuito de Datos</h3>
                     </div>
-                    <div className="aspect-video bg-neutral-950 rounded-3xl border-4 border-neutral-800 relative overflow-hidden flex items-center justify-center">
-                      <div className="text-neutral-700 font-black text-9xl opacity-10 absolute">S-CURVE</div>
-                      <div className="relative z-10 text-center">
-                        <p className="text-neutral-400 font-bold mb-4">LONGITUD TOTAL: 100 KM</p>
-                        <div className="flex gap-4 justify-center">
-                          <div className="px-4 py-2 bg-blue-500/10 rounded-full text-blue-500 text-xs font-black">CURVAS CERRADAS</div>
-                          <div className="px-4 py-2 bg-amber-500/10 rounded-full text-amber-500 text-xs font-black">ZONAS DE ACEITE</div>
-                          <div className="px-4 py-2 bg-red-500/10 rounded-full text-red-500 text-xs font-black">BACHES OCULTOS</div>
-                        </div>
+                    <div className="aspect-video bg-neutral-950 rounded-xl border-2 border-neutral-800 relative overflow-hidden flex flex-col items-center justify-center p-3">
+                      <div className="text-neutral-800 font-black text-4xl opacity-15 absolute">S-CURVE</div>
+                      <p className="text-neutral-300 font-extrabold text-[11px] mb-2 z-10">LONGITUD: 100 KM</p>
+                      <div className="flex flex-wrap gap-1.5 justify-center z-10">
+                        <span className="px-1.5 py-0.5 bg-blue-500/10 rounded text-blue-400 text-[9px] font-black uppercase">CURVAS</span>
+                        <span className="px-1.5 py-0.5 bg-amber-500/10 rounded text-amber-400 text-[9px] font-black uppercase">ACEITE</span>
+                        <span className="px-1.5 py-0.5 bg-red-500/10 rounded text-red-500 text-[9px] font-black uppercase">BACHES</span>
                       </div>
                     </div>
                   </motion.div>
@@ -850,129 +856,195 @@ export default function App() {
 
                 {gameOverView === 'narrative' && (
                   <motion.div 
-                    initial={{ opacity: 0, y: 20 }}
+                    initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
-                    className="w-full max-w-2xl bg-neutral-900 p-10 rounded-[3rem] border-2 border-neutral-800 mb-12"
+                    className="w-full max-w-xs bg-neutral-900 p-5 rounded-2xl border border-neutral-800 mb-6 max-h-[220px] overflow-y-auto"
                   >
-                    <div className="flex items-center gap-4 mb-8 justify-center">
-                      <BookOpen className="w-10 h-10 text-amber-500" />
-                      <h3 className="text-4xl font-black italic uppercase tracking-tighter">Crónicas del Asfalto</h3>
+                    <div className="flex items-center gap-2 mb-3 justify-center">
+                      <BookOpen className="w-6 h-6 text-amber-500" />
+                      <h3 className="text-xl font-black italic uppercase tracking-tighter text-amber-400">Crónicas del Asfalto</h3>
                     </div>
-                    <div className="text-left space-y-6 text-neutral-300 text-lg leading-relaxed font-medium italic">
+                    <div className="text-left space-y-3 text-neutral-300 text-xs leading-relaxed font-semibold italic">
                       <p>
-                        "En el año 2088, las megacorporaciones controlan los últimos recursos de energía del planeta. Las ciudades son laberintos de neón donde la libertad es un recuerdo lejano."
+                        "En 2088, las megacorporaciones controlan la energía. Las pistas vacías son el único lugar para rebelarse."
                       </p>
                       <p>
-                        "Los 'Circuit Fighters' son pilotos rebeldes que compiten en pistas abandonadas y peligrosas para recolectar núcleos de combustible y desafiar el monopolio energético. Cada carrera no es solo por la gloria, sino por la supervivencia de la resistencia."
-                      </p>
-                      <p>
-                        "Tú eres el último de una estirpe de corredores que no temen a la velocidad ni al peligro. El asfalto es tu único aliado, y tu coche, tu arma contra la opresión."
+                        "Los 'Circuit Fighters' desafían el monopolio recolectando combustible en carreras peligrosas por la libertad."
                       </p>
                     </div>
                   </motion.div>
                 )}
 
-                <div className="flex flex-wrap justify-center gap-4">
+                <div className="flex flex-col gap-2 w-full max-w-xs">
                   <button
                     onClick={startGameSequence}
-                    className="px-10 py-5 bg-white text-black hover:bg-neutral-200 transition-all rounded-2xl font-black text-xl flex items-center gap-3 active:scale-95 shadow-2xl"
+                    className="w-full py-3 bg-white text-black hover:bg-neutral-200 transition-all rounded-xl font-black text-sm flex items-center justify-center gap-2 active:scale-95 shadow-md"
                   >
-                    <RotateCcw className="w-6 h-6" />
+                    <RotateCcw className="w-4 h-4" />
                     NUEVO JUEGO
                   </button>
                   
-                  <button
-                    onClick={() => setGameOverView(gameOverView === 'map' ? 'main' : 'map')}
-                    className={`px-10 py-5 ${gameOverView === 'map' ? 'bg-blue-600 text-white' : 'bg-neutral-800 text-neutral-400'} hover:bg-blue-500 hover:text-white transition-all rounded-2xl font-black text-xl flex items-center gap-3 active:scale-95 shadow-2xl`}
-                  >
-                    <MapIcon className="w-6 h-6" />
-                    MAPA
-                  </button>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      onClick={() => setGameOverView(gameOverView === 'map' ? 'main' : 'map')}
+                      className={`py-2.5 ${gameOverView === 'map' ? 'bg-blue-600 text-white' : 'bg-neutral-800 text-neutral-400'} hover:bg-blue-500 hover:text-white transition-all rounded-xl font-black text-xs flex items-center justify-center gap-2 active:scale-95`}
+                    >
+                      <MapIcon className="w-4 h-4" />
+                      MAPA
+                    </button>
 
-                  <button
-                    onClick={() => setGameOverView(gameOverView === 'narrative' ? 'main' : 'narrative')}
-                    className={`px-10 py-5 ${gameOverView === 'narrative' ? 'bg-amber-600 text-white' : 'bg-neutral-800 text-neutral-400'} hover:bg-amber-500 hover:text-white transition-all rounded-2xl font-black text-xl flex items-center gap-3 active:scale-95 shadow-2xl`}
-                  >
-                    <BookOpen className="w-6 h-6" />
-                    NARRATIVA
-                  </button>
+                    <button
+                      onClick={() => setGameOverView(gameOverView === 'narrative' ? 'main' : 'narrative')}
+                      className={`py-2.5 ${gameOverView === 'narrative' ? 'bg-amber-600 text-white' : 'bg-neutral-800 text-neutral-400'} hover:bg-amber-500 hover:text-white transition-all rounded-xl font-black text-xs flex items-center justify-center gap-2 active:scale-95`}
+                    >
+                      <BookOpen className="w-4 h-4" />
+                      NARRATIVA
+                    </button>
+                  </div>
                 </div>
               </motion.div>
             )}
           </AnimatePresence>
         </div>
 
-        {/* Sidebar UI */}
-        <div className="w-full lg:w-80 flex flex-col gap-6">
+        {/* Dashboard and Virtual Controllers Area below Canvas */}
+        <div className="flex-1 bg-neutral-900 border-t-2 border-neutral-800 flex flex-col p-4 justify-between relative overflow-hidden">
           
-          {/* Speedometer */}
-          <div className="bg-neutral-900 p-8 rounded-[2.5rem] border-2 border-neutral-800 shadow-2xl relative overflow-hidden">
-            <div className="flex items-center gap-2 text-neutral-500 mb-6 text-[10px] font-black uppercase tracking-[0.3em]">
-              <Zap className="w-4 h-4 text-amber-400" />
-              Telemetry
-            </div>
-            <div className="relative flex items-baseline justify-center mb-8">
-              <div className="text-8xl font-black tabular-nums tracking-tighter italic">
-                {Math.floor(uiSpeed * 18)}
-              </div>
-              <span className="text-neutral-600 ml-2 font-black text-sm italic">KM/H</span>
-            </div>
-            <div className="h-4 bg-neutral-800 rounded-full overflow-hidden p-1">
-              <motion.div 
-                className="h-full bg-gradient-to-r from-blue-600 via-blue-400 to-cyan-400 rounded-full"
-                animate={{ width: `${(uiSpeed / MAX_SPEED) * 100}%` }}
-              />
-            </div>
-          </div>
+          {/* Carbon Fiber Background Effect */}
+          <div className="absolute inset-0 bg-[radial-gradient(#1e293b_1px,transparent_1px)] [background-size:16px_16px] opacity-10 pointer-events-none" />
 
-          {/* Fuel Gauge */}
-          <div className="bg-neutral-900 p-8 rounded-[2.5rem] border-2 border-neutral-800 shadow-2xl">
-            <div className="flex items-center justify-between mb-6">
-              <div className="flex items-center gap-2 text-neutral-500 text-[10px] font-black uppercase tracking-[0.3em]">
-                <Fuel className="w-4 h-4 text-green-500" />
-                Energy
-              </div>
-              <span className={`text-sm font-black italic ${uiFuel < 25 ? 'text-red-500 animate-pulse' : 'text-green-500'}`}>
-                {Math.floor(uiFuel)}%
+          {/* Telemetry/HUD Row */}
+          <div className="grid grid-cols-2 gap-3 relative z-10">
+            {/* Speedometer */}
+            <div className="bg-neutral-950 p-2.5 rounded-2xl border border-neutral-800 flex flex-col justify-between">
+              <span className="text-[9px] font-black text-neutral-500 uppercase tracking-widest flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" /> Telemetry
               </span>
-            </div>
-            <div className="grid grid-cols-10 gap-1 h-8">
-              {[...Array(10)].map((_, i) => (
-                <motion.div
-                  key={i}
-                  className={`h-full rounded-sm ${i < uiFuel / 10 ? (uiFuel < 25 ? 'bg-red-500' : 'bg-green-500') : 'bg-neutral-800'}`}
-                  animate={{ opacity: i < uiFuel / 10 ? 1 : 0.3 }}
+              <div className="flex items-baseline gap-1 mt-1">
+                <span className="text-3xl font-black tabular-nums tracking-tight italic text-neutral-100">
+                  {Math.floor(uiSpeed * 10)}
+                </span>
+                <span className="text-[10px] font-bold text-neutral-600 italic">KM/H</span>
+              </div>
+              <div className="h-1.5 bg-neutral-900 rounded-full overflow-hidden mt-1.5 p-[1px]">
+                <div 
+                  className="h-full bg-gradient-to-r from-blue-500 to-cyan-400 rounded-full transition-all duration-75"
+                  style={{ width: `${(uiSpeed / MAX_SPEED) * 100}%` }}
                 />
-              ))}
-            </div>
-          </div>
-
-          {/* Stats Grid */}
-          <div className="grid grid-cols-1 gap-4">
-            <div className="bg-neutral-900 p-6 rounded-[2rem] border-2 border-neutral-800 flex justify-between items-center">
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 bg-amber-500/10 rounded-2xl flex items-center justify-center">
-                  <Trophy className="w-6 h-6 text-amber-500" />
-                </div>
-                <div>
-                  <div className="text-neutral-500 text-[10px] font-black uppercase tracking-widest">Points</div>
-                  <div className="text-2xl font-black tabular-nums italic">{uiScore}</div>
-                </div>
               </div>
             </div>
 
-            <div className="bg-neutral-900 p-6 rounded-[2rem] border-2 border-neutral-800 flex items-center gap-4">
-              <div className="w-12 h-12 bg-blue-500/10 rounded-2xl flex items-center justify-center">
-                <Flag className="w-6 h-6 text-blue-500" />
+            {/* Energy (Fuel) Gauge */}
+            <div className="bg-neutral-950 p-2.5 rounded-2xl border border-neutral-800 flex flex-col justify-between">
+              <div className="flex justify-between items-center">
+                <span className="text-[9px] font-black text-neutral-500 uppercase tracking-widest flex items-center gap-1">
+                  <Fuel className="w-3 h-3 text-emerald-500" /> Energy
+                </span>
+                <span className={`text-[10px] font-black ${uiFuel < 25 ? 'text-red-500 animate-pulse' : 'text-emerald-500'}`}>
+                  {Math.floor(uiFuel)}%
+                </span>
               </div>
-              <div>
-                <div className="text-neutral-500 text-[10px] font-black uppercase tracking-widest">Distance</div>
-                <div className="text-2xl font-black tabular-nums italic">{Math.floor(uiDistance)}<span className="text-xs text-neutral-600 ml-1">KM</span></div>
+              <div className="grid grid-cols-10 gap-0.5 h-4 mt-2">
+                {[...Array(10)].map((_, i) => (
+                  <div
+                    key={i}
+                    className={`h-full rounded-sm ${i < uiFuel / 10 ? (uiFuel < 25 ? 'bg-red-500' : 'bg-emerald-500') : 'bg-neutral-900'}`}
+                    style={{ opacity: i < uiFuel / 10 ? 1 : 0.2 }}
+                  />
+                ))}
               </div>
             </div>
           </div>
+
+          {/* Virtual Steering and Pedals Pad Deck */}
+          <div className="flex items-center justify-between mt-3 relative z-10 gap-2">
+            
+            {/* Steering Left/Right Buttons */}
+            <div className="flex items-center gap-2">
+              <button
+                className="w-14 h-14 rounded-full bg-neutral-950 active:bg-blue-600 focus:outline-none border-2 border-neutral-800 flex items-center justify-center select-none cursor-pointer shadow-md active:scale-90 transition-transform active:border-blue-400 text-neutral-400 active:text-white"
+                onMouseDown={() => { keys.current['arrowleft'] = true; }}
+                onMouseUp={() => { keys.current['arrowleft'] = false; }}
+                onMouseLeave={() => { keys.current['arrowleft'] = false; }}
+                onTouchStart={(e) => { e.preventDefault(); keys.current['arrowleft'] = true; }}
+                onTouchEnd={(e) => { e.preventDefault(); keys.current['arrowleft'] = false; }}
+              >
+                <ChevronLeft className="w-7 h-7" />
+              </button>
+
+              <button
+                className="w-14 h-14 rounded-full bg-neutral-950 active:bg-blue-600 focus:outline-none border-2 border-neutral-800 flex items-center justify-center select-none cursor-pointer shadow-md active:scale-90 transition-transform active:border-blue-400 text-neutral-400 active:text-white"
+                onMouseDown={() => { keys.current['arrowright'] = true; }}
+                onMouseUp={() => { keys.current['arrowright'] = false; }}
+                onMouseLeave={() => { keys.current['arrowright'] = false; }}
+                onTouchStart={(e) => { e.preventDefault(); keys.current['arrowright'] = true; }}
+                onTouchEnd={(e) => { e.preventDefault(); keys.current['arrowright'] = false; }}
+              >
+                <ChevronRight className="w-7 h-7" />
+              </button>
+            </div>
+
+            {/* Mid Stats Screen */}
+            <div className="flex-1 flex flex-col items-center justify-center text-center px-1">
+              <div className="bg-neutral-950 py-1.5 px-3 rounded-xl border border-neutral-800 w-full flex flex-col gap-0.5">
+                <div className="flex justify-between items-center text-[9px] font-black text-neutral-500 uppercase">
+                  <span>Score</span>
+                  <span className="text-neutral-300 tabular-nums font-bold">{uiScore}</span>
+                </div>
+                <div className="h-[1px] bg-neutral-900 w-full" />
+                <div className="flex justify-between items-center text-[9px] font-black text-neutral-500 uppercase">
+                  <span>Dist</span>
+                  <span className="text-neutral-300 tabular-nums font-bold">{Math.floor(uiDistance)}KM</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Accel & Brake Pedals Grid */}
+            <div className="flex items-end gap-2 shrink-0">
+              {/* Brake Pedal (Short, Red) */}
+              <button
+                className="w-14 h-16 rounded-xl bg-gradient-to-b from-rose-600 to-rose-800 active:from-rose-500 active:to-rose-700 border-2 border-rose-500/40 flex flex-col items-center justify-center select-none cursor-pointer shadow-md active:scale-95 transition-transform text-white"
+                onMouseDown={() => { keys.current['arrowdown'] = true; keys.current[' '] = true; }}
+                onMouseUp={() => { keys.current['arrowdown'] = false; keys.current[' '] = false; }}
+                onMouseLeave={() => { keys.current['arrowdown'] = false; keys.current[' '] = false; }}
+                onTouchStart={(e) => { e.preventDefault(); keys.current['arrowdown'] = true; keys.current[' '] = true; }}
+                onTouchEnd={(e) => { e.preventDefault(); keys.current['arrowdown'] = false; keys.current[' '] = false; }}
+              >
+                <div className="flex flex-col gap-[2px] w-8 opacity-40 mb-1">
+                  <div className="h-[2px] bg-white rounded-full" />
+                  <div className="h-[2px] bg-white rounded-full" />
+                  <div className="h-[2px] bg-white rounded-full" />
+                </div>
+                <span className="text-[8px] font-black tracking-widest text-rose-100 uppercase leading-none">Brake</span>
+              </button>
+
+              {/* Accelerator Pedal (Tall, Green) */}
+              <button
+                className="w-12 h-20 rounded-xl bg-gradient-to-b from-emerald-500 to-emerald-700 active:from-emerald-400 active:to-emerald-600 border-2 border-emerald-400/40 flex flex-col items-center justify-between py-2.5 select-none cursor-pointer shadow-md active:scale-95 transition-transform text-white"
+                onMouseDown={() => { keys.current['arrowup'] = true; }}
+                onMouseUp={() => { keys.current['arrowup'] = false; }}
+                onMouseLeave={() => { keys.current['arrowup'] = false; }}
+                onTouchStart={(e) => { e.preventDefault(); keys.current['arrowup'] = true; }}
+                onTouchEnd={(e) => { e.preventDefault(); keys.current['arrowup'] = false; }}
+              >
+                <ArrowUp className="w-4 h-4 text-emerald-200 animate-bounce" />
+                <div className="flex flex-col gap-[3px] w-5 opacity-40 my-1">
+                  <div className="h-[1.5px] bg-white rounded-full" />
+                  <div className="h-[1.5px] bg-white rounded-full" />
+                  <div className="h-[1.5px] bg-white rounded-full" />
+                  <div className="h-[1.5px] bg-white rounded-full" />
+                </div>
+                <span className="text-[8px] font-black tracking-widest text-emerald-100 uppercase leading-none">Gas</span>
+              </button>
+            </div>
+
+          </div>
+
+          {/* iOS-style bottom home indicator bar line */}
+          <div className="w-[120px] h-[4px] bg-neutral-800 rounded-full mx-auto -mb-1 mt-1 shrink-0" />
 
         </div>
+
       </div>
     </div>
   );
