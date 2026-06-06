@@ -8,7 +8,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Trophy, Zap, Fuel, AlertTriangle, Play, RotateCcw, Flag, BookOpen, Map as MapIcon, ChevronLeft, ChevronRight, ArrowUp } from 'lucide-react';
 
 // Constants
-const ROAD_WIDTH = 340;
+const ROAD_WIDTH = 260;
 const CAR_WIDTH = 30;
 const CAR_HEIGHT = 50;
 const CANVAS_WIDTH = 390;
@@ -21,7 +21,7 @@ const ACCELERATION = 0.05;
 const DECELERATION = 0.04;
 const BRAKE_FORCE = 0.8;
 const SIDE_SPEED = 1.2; // Increased for snappier, "shorter" response
-const TOTAL_RACE_DISTANCE = 10000; // 100km (100 units = 1km)
+const TOTAL_RACE_DISTANCE = 3000; // 30km (100 units = 1km)
 
 type Entity = {
   id: number;
@@ -54,6 +54,7 @@ export default function App() {
   const [uiIsDrifting, setUiIsDrifting] = useState(false);
   const [uiShowDriftPayout, setUiShowDriftPayout] = useState(0);
   const [uiShowDriftMsg, setUiShowDriftMsg] = useState('');
+  const [uiCurvature, setUiCurvature] = useState(0);
   
   // Interactive steering wheel state & ref
   const [uiWheelAngle, setUiWheelAngle] = useState(0);
@@ -104,12 +105,38 @@ export default function App() {
     if (distance < 0) return 0;
     const segmentSize = 100;
     const index = Math.floor(distance / segmentSize);
-    const nextIndex = Math.min(index + 1, trackCurvature.current.length - 1);
+    const nextIndex = trackCurvature.current.length > 0 ? Math.min(index + 1, trackCurvature.current.length - 1) : 0;
     const t = (distance % segmentSize) / segmentSize;
     
     const c1 = trackCurvature.current[index] || 0;
     const c2 = trackCurvature.current[nextIndex] || 0;
     return c1 + (c2 - c1) * t;
+  };
+
+  // Helper vectors for rendering responsive HTML-based SVG track paths
+  const generateMinimapPath = (width: number, height: number) => {
+    if (trackCurvature.current.length === 0) return '';
+    const points: string[] = [];
+    const totalPoints = 35;
+    for (let i = 0; i <= totalPoints; i++) {
+      const dist = (i / totalPoints) * TOTAL_RACE_DISTANCE;
+      const curve = getRoadCurveAtDistance(dist);
+      const relativeX = curve / 450; 
+      const x = width / 2 + relativeX * (width / 2 - 5);
+      const y = height - (i / totalPoints) * height;
+      if (i === 0) points.push(`M ${x} ${y}`);
+      else points.push(`L ${x} ${y}`);
+    }
+    return points.join(' ');
+  };
+
+  const getPlayerMinimapCoords = (width: number, height: number) => {
+    const progress = Math.min(uiDistance / TOTAL_RACE_DISTANCE, 1);
+    const y = height - (progress * height);
+    const currentCurve = getRoadCurveAtDistance(uiDistance);
+    const pRelativeX = currentCurve / 450;
+    const x = width / 2 + pRelativeX * (width / 2 - 5);
+    return { x, y };
   };
 
   // Helper to get road center at a specific Y coordinate with 2.5D visual curved projection
@@ -246,8 +273,8 @@ export default function App() {
     
     // Use an aggressive, multi-frequency wave for sharp, challenging curves (pronunciadas)
     for (let i = 0; i < totalSegments; i++) {
-      // Mix high and medium amplitude sine waves for intense drift gameplay
-      trackCurvature.current[i] = Math.sin(i * 0.15) * 580 + Math.sin(i * 0.05) * 150;
+      // Mix high and medium amplitude sine waves for intense drift gameplay (making curves significantly tighter/closed)
+      trackCurvature.current[i] = Math.sin(i * 0.20) * 880 + Math.sin(i * 0.08) * 320;
     }
     
     // Extra smoothing for ultra-fluid circular motion
@@ -280,6 +307,21 @@ export default function App() {
       }
     }
   }, [gameState, countdown]);
+
+  useEffect(() => {
+    // Pre-initialize track configuration on mount so HUD components loaded at the start menu don't get NaN
+    const segmentSize = 100;
+    const totalSegments = Math.ceil(TOTAL_RACE_DISTANCE / segmentSize) + 10;
+    trackCurvature.current = new Array(totalSegments).fill(0);
+    for (let i = 0; i < totalSegments; i++) {
+      trackCurvature.current[i] = Math.sin(i * 0.20) * 880 + Math.sin(i * 0.08) * 320;
+    }
+    for (let i = 5; i < totalSegments - 5; i++) {
+      let sum = 0;
+      for (let j = -5; j <= 5; j++) sum += trackCurvature.current[i + j];
+      trackCurvature.current[i] = sum / 11;
+    }
+  }, []);
 
   const update = (time: number) => {
     const deltaTime = time - lastTime.current;
@@ -634,6 +676,9 @@ export default function App() {
     setUiActiveDriftCombo(driftComboRef.current);
     setUiIsDrifting(isDriftingRef.current);
 
+    const lookAheadCurve = getRoadCurveAtDistance(distanceRef.current + 35);
+    setUiCurvature(lookAheadCurve);
+
     // Calculate 2.5D camera tilt turning & sliding (simulates camera banking and view rotation during curves)
     const curveVal = getRoadCurveAtDistance(distanceRef.current);
     const steeringFactor = isLeft ? -0.012 : (isRight ? 0.012 : 0);
@@ -658,22 +703,51 @@ export default function App() {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    // Background (Static)
-    ctx.fillStyle = '#064e3b'; 
+    // Hard reset canvas backing store to original retro dimensions to restore original zoom and pixel ratio
+    if (canvas.width !== CANVAS_WIDTH || canvas.height !== CANVAS_HEIGHT) {
+      canvas.width = CANVAS_WIDTH;
+      canvas.height = CANVAS_HEIGHT;
+    }
+
+    // Draw base solid color for sky/ground back-surface
+    ctx.fillStyle = '#033b2c'; 
     ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 
-    // Apply 2.5D camera rotation and sliding visual effect around the player region
+    // Apply 2.5D camera rotation, sliding, and speed-induced rumble vibrations around the player region
     ctx.save();
     const pivotX = CANVAS_WIDTH / 2;
     const pivotY = CANVAS_HEIGHT - 100;
-    ctx.translate(pivotX + cameraSlideRef.current, pivotY);
+    
+    // Physical camera vibration / shaking proportional to speed and drifting
+    let shakeX = 0;
+    let shakeY = 0;
+    if (speedRef.current > 1) {
+      const isDrifting = isDriftingRef.current;
+      const velocityRatio = speedRef.current / MAX_SPEED;
+      // Rumble shakes the camera based on how fast we go + if we drift
+      const vibrationScale = velocityRatio * 0.6 + (isDrifting ? 1.6 : 0.15);
+      // Create high-frequency offset
+      shakeX = (Math.sin(performance.now() * 0.08) * vibrationScale * 0.7) + (Math.random() - 0.5) * (vibrationScale * 0.3);
+      shakeY = (Math.cos(performance.now() * 0.10) * vibrationScale * 0.7) + (Math.random() - 0.5) * (vibrationScale * 0.3);
+    }
+    
+    ctx.translate(pivotX + cameraSlideRef.current + shakeX, pivotY + shakeY);
     ctx.rotate(cameraAngleRef.current);
     ctx.translate(-pivotX, -pivotY);
 
-    // Draw Road in segments to create the curve effect
+    // Draw Road & Ground in segments to create the curve and scrolling terrain effect
     const segmentHeight = 5;
     for (let y = 0; y < CANVAS_HEIGHT; y += segmentHeight) {
       const roadX = getRoadXAt(y, distanceRef.current);
+      
+      // Traditional 3D arcade perspective grass striping! (Termina la cámara estática)
+      // Alternates color depending on distance traveled and perspective height
+      const grassStripeY = y - distanceRef.current * 125; 
+      const isAltGrass = Math.floor(grassStripeY / 35) % 2 === 0;
+      
+      // Draw alternating grass field segment
+      ctx.fillStyle = isAltGrass ? '#064e3b' : '#032c21'; // High contrast rich forest green toggles
+      ctx.fillRect(0, y, CANVAS_WIDTH, segmentHeight);
       
       // Draw Stairs and Audience on the sides (optimized for 390px mobile view)
       const stairWidth = 10;
@@ -1045,14 +1119,68 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Upper Middle RECORD Meter (Centered at the top as requested) */}
-              <div className="bg-black/85 backdrop-blur-md px-3 py-1.5 sm:px-4 sm:py-2 rounded-2xl border border-neutral-800/80 flex flex-col items-center justify-center shadow-2xl pointer-events-auto min-w-[90px] sm:min-w-[120px]">
-                <span className="text-[7.5px] font-black tracking-widest text-amber-400 uppercase leading-none flex items-center gap-1">
-                  <Trophy className="w-2.5 h-2.5 text-amber-400 animate-pulse" /> RÉCORD
-                </span>
-                <span className="text-xl sm:text-2xl font-black italic text-amber-400 tabular-nums mt-0.5">
-                  {highScore}
-                </span>
+              {/* Upper Middle Section holding Record & Curvature Gizmo */}
+              <div className="flex flex-col items-center gap-1 pointer-events-auto">
+                {/* Upper Middle RECORD Meter */}
+                <div className="bg-black/85 backdrop-blur-md px-3 py-1 rounded-2xl border border-neutral-800/80 flex items-center justify-center gap-1.5 shadow-2xl min-w-[90px] sm:min-w-[110px]">
+                  <span className="text-[7px] font-black tracking-widest text-amber-400 uppercase leading-none flex items-center gap-0.5">
+                    <Trophy className="w-2 h-2 text-amber-400 animate-pulse" /> RÉCORD:
+                  </span>
+                  <span className="text-sm font-black italic text-amber-400 tabular-nums">
+                    {highScore}
+                  </span>
+                </div>
+
+                {/* Gizmógrafo de Giro / Curvature Rotation Gizmo */}
+                <div className="bg-black/85 backdrop-blur-md px-2 py-1 rounded-2xl border border-neutral-800/80 flex flex-col items-center justify-center shadow-2xl min-w-[100px] sm:min-w-[125px] transition-all">
+                  <span className="text-[6.5px] font-black tracking-widest text-cyan-400 uppercase leading-none mb-0.5 flex items-center gap-0.5 justify-center">
+                    <Zap className="w-2 h-2 text-cyan-400 animate-pulse" /> GIROSCOPIO
+                  </span>
+                  <div className="relative w-8 h-8 sm:w-10 sm:h-10 flex items-center justify-center">
+                    <svg className="w-full h-full" viewBox="0 0 50 50">
+                      <circle cx="25" cy="25" r="22" fill="none" stroke="#262626" strokeWidth="1" strokeDasharray="2 4" />
+                      {/* Left indicator zone (Cyan glow) */}
+                      <path 
+                        d="M 9.5 25 A 15.5 15.5 0 0 1 25 9.5" 
+                        fill="none" 
+                        stroke={uiCurvature < -50 ? "#22d3ee" : "#404040"} 
+                        strokeWidth="2" 
+                        strokeLinecap="round"
+                        className="transition-colors duration-150" 
+                      />
+                      {/* Right indicator zone (Amber glow) */}
+                      <path 
+                        d="M 25 9.5 A 15.5 15.5 0 0 1 40.5 25" 
+                        fill="none" 
+                        stroke={uiCurvature > 50 ? "#facc15" : "#404040"} 
+                        strokeWidth="2" 
+                        strokeLinecap="round"
+                        className="transition-colors duration-150" 
+                      />
+                      <line x1="25" y1="5" x2="25" y2="45" stroke="#171717" strokeWidth="0.5" />
+                      <line x1="5" y1="25" x2="45" y2="25" stroke="#171717" strokeWidth="0.5" />
+                      
+                      {/* Rotating arrow indicator */}
+                      <g style={{ 
+                        transform: `rotate(${Math.max(-45, Math.min(45, (uiCurvature / 480) * 45))}deg)`, 
+                        transformOrigin: '25px 25px', 
+                        transition: 'transform 80ms cubic-bezier(0.1, 0.8, 0.3, 1)' 
+                      }}>
+                        {/* Needle */}
+                        <path d="M 12 25 L 20 25 L 25 18 L 30 25 L 38 25" fill="none" stroke={Math.abs(uiCurvature) > 300 ? "#ef4444" : (Math.abs(uiCurvature) > 100 ? "#facc15" : "#22d3ee")} strokeWidth="2.5" strokeLinecap="round" />
+                        <circle cx="25" cy="25" r="2.5" fill="#ffffff" />
+                      </g>
+                    </svg>
+                    {/* Live percent ratio badge */}
+                    <span className="absolute bottom-[-2px] text-[6.5px] font-black text-neutral-400">
+                      {Math.abs(Math.round((uiCurvature / 480) * 100))}%
+                    </span>
+                  </div>
+                  {/* Human readable curve speed rating */}
+                  <span className={`text-[6.5px] font-black tracking-wider mt-0.5 uppercase ${Math.abs(uiCurvature) > 300 ? 'text-red-500 animate-pulse' : (Math.abs(uiCurvature) > 100 ? 'text-amber-400' : 'text-neutral-500')}`}>
+                    {Math.abs(uiCurvature) < 60 ? 'RECTA' : (uiCurvature < 0 ? 'GIRO IZQ' : 'GIRO DER')}
+                  </span>
+                </div>
               </div>
 
               {/* Upper Right Fuel Gauge / Energy (Premium Glow Theme) */}
@@ -1080,6 +1208,56 @@ export default function App() {
                 </div>
               </div>
 
+            </div>
+          )}
+
+          {/* Floating Minimap Overlay (Visible on the right during active gameplay as requested) */}
+          {(gameState === 'playing' || gameState === 'countdown') && (
+            <div className="absolute right-3 top-[25%] sm:right-4 z-10 pointer-events-none select-none flex flex-col items-center gap-1 bg-black/85 backdrop-blur-md px-2 py-3 rounded-2xl border border-neutral-800/80 shadow-2xl pointer-events-auto w-[64px] sm:w-[72px]">
+              <span className="text-[6px] font-black tracking-widest text-neutral-400 uppercase leading-none">FALTA</span>
+              <span className="text-[9px] font-black italic text-cyan-400 tabular-nums leading-none">
+                {Math.max(0, Math.floor((TOTAL_RACE_DISTANCE - uiDistance) / 100))} KM
+              </span>
+              
+              <div className="relative w-[34px] h-[120px] sm:h-[140px] mt-2 flex items-center justify-center">
+                <svg width="34" height="120" viewBox="0 0 34 120" className="opacity-95">
+                  <path
+                    d={generateMinimapPath(34, 120)}
+                    fill="none"
+                    stroke="rgba(255, 255, 255, 0.12)"
+                    strokeWidth="3.5"
+                    strokeLinecap="round"
+                  />
+                  <path
+                    d={generateMinimapPath(34, 120)}
+                    fill="none"
+                    stroke="url(#minimap-neon-glow)"
+                    strokeWidth="4"
+                    strokeLinecap="round"
+                    strokeDasharray="140"
+                    strokeDashoffset={140 - (uiDistance / TOTAL_RACE_DISTANCE) * 140}
+                    className="opacity-90"
+                  />
+                  <defs>
+                    <linearGradient id="minimap-neon-glow" x1="0%" y1="100%" x2="0%" y2="0%">
+                      <stop offset="0%" stopColor="#3b82f6" />
+                      <stop offset="100%" stopColor="#22d3ee" />
+                    </linearGradient>
+                  </defs>
+                </svg>
+                {/* Finish label */}
+                <span className="absolute top-[-14px] text-[10px] leading-none select-none animate-bounce">🏁</span>
+                {/* Pulse dot representing the player car */}
+                <div
+                  className="absolute w-3.5 h-3.5 bg-cyan-400 rounded-full border-2 border-white shadow-[0_0_10px_rgba(34,211,238,0.9)] -translate-x-1/2 -translate-y-1/2 transition-all duration-75 flex items-center justify-center animate-pulse"
+                  style={{
+                    left: `${getPlayerMinimapCoords(34, 120).x}px`,
+                    top: `${getPlayerMinimapCoords(34, 120).y}px`,
+                  }}
+                >
+                  <div className="w-1 h-1 bg-white rounded-full" />
+                </div>
+              </div>
             </div>
           )}
 
@@ -1419,7 +1597,7 @@ export default function App() {
                     </div>
                     <div className="aspect-video bg-neutral-950 rounded-xl border-2 border-neutral-800 relative overflow-hidden flex flex-col items-center justify-center p-3">
                       <div className="text-neutral-800 font-black text-4xl opacity-15 absolute">S-CURVE</div>
-                      <p className="text-neutral-300 font-extrabold text-[11px] mb-2 z-10">LONGITUD: 100 KM</p>
+                      <p className="text-neutral-300 font-extrabold text-[11px] mb-2 z-10">LONGITUD: 30 KM</p>
                       <div className="flex flex-wrap gap-1.5 justify-center z-10">
                         <span className="px-1.5 py-0.5 bg-blue-500/10 rounded text-blue-400 text-[9px] font-black uppercase">CURVAS</span>
                         <span className="px-1.5 py-0.5 bg-amber-500/10 rounded text-amber-400 text-[9px] font-black uppercase">ACEITE</span>
