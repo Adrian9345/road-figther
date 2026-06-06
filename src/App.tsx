@@ -326,11 +326,11 @@ export default function App() {
       trackCurvature.current[i] = sum / 11;
     }
     
-    // Setup Starting Grid: 10 cars in rows
+    // Setup Starting Grid: 10 cars in rows at the starting line
     for (let i = 0; i < 10; i++) {
         const row = Math.floor(i / 2);
         const col = i % 2;
-        const yOffset = CANVAS_HEIGHT - 300 - (row * 150); // space them out vertically
+        const yOffset = CANVAS_HEIGHT - 280 - (row * 40); 
         spawnEntity(true, yOffset, col);
     }
     
