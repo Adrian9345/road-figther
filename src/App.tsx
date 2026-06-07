@@ -13,7 +13,7 @@ const CAR_WIDTH = 30;
 const CAR_HEIGHT = 50;
 const INITIAL_FUEL = 100;
 const FUEL_CONSUMPTION_RATE = 0.04;
-const MAX_SPEED = 10; // 100 km/h
+const MAX_SPEED = 6; // 60 km/h
 const MIN_SPEED = 3;  // 30 km/h
 const ACCELERATION = 0.05;
 const DECELERATION = 0.04;
@@ -150,11 +150,12 @@ export default function App() {
   const generateMinimapPath = (width: number, height: number) => {
     if (trackCurvature.current.length === 0) return '';
     const points: string[] = [];
-    const totalPoints = 35;
+    const totalPoints = 100; // Increased points for smoother minimap
     for (let i = 0; i <= totalPoints; i++) {
       const dist = (i / totalPoints) * TOTAL_RACE_DISTANCE;
       const curve = getRoadCurveAtDistance(dist);
-      const relativeX = curve / 450; 
+      // Increased scaling to fit the entire track curvature range
+      const relativeX = curve / 4000; 
       const x = width / 2 + relativeX * (width / 2 - 5);
       const y = height - (i / totalPoints) * height;
       if (i === 0) points.push(`M ${x} ${y}`);
@@ -304,35 +305,40 @@ export default function App() {
     setUiShowDriftPayout(0);
     setUiShowDriftMsg('');
 
-    // Generate Track Data: Extended circular S-shape with pronounced hairpins and sweeping turns
-    const segmentSize = 100; // Smaller segments for smoother sine-based curves
+    // Generate Track Data: Fluid circuit with sinusoidal curves
+    const segmentSize = 100;
     const totalSegments = Math.ceil(TOTAL_RACE_DISTANCE / segmentSize) + 10;
     trackCurvature.current = new Array(totalSegments).fill(0);
     
-    // Use an aggressive, multi-frequency wave for sharp, challenging curves (pronunciadas)
     for (let i = 0; i < totalSegments; i++) {
-      if (i < 50) {
-        trackCurvature.current[i] = 0;
-      } else {
-        // Mix high and medium amplitude sine waves for intense drift gameplay (making curves significantly tighter/closed)
-        trackCurvature.current[i] = Math.sin(i * 0.20) * 880 + Math.sin(i * 0.08) * 320;
-      }
+        // Straight start for the first 20 segments (2000 units), then curves
+        if (i < 20) {
+            trackCurvature.current[i] = 0;
+        } else {
+            trackCurvature.current[i] = Math.sin(i * 0.25) * 1200 + Math.sin(i * 0.08) * 800;
+        }
     }
     
-    // Extra smoothing for ultra-fluid circular motion
+    // Extra smoothing
     for (let i = 5; i < totalSegments - 5; i++) {
       let sum = 0;
       for (let j = -5; j <= 5; j++) sum += trackCurvature.current[i + j];
       trackCurvature.current[i] = sum / 11;
     }
     
-    // Setup Starting Grid: 10 cars in rows at the starting line
-    for (let i = 0; i < 10; i++) {
-        const row = Math.floor(i / 2);
+    // Setup Starting Grid: 9 rivals in front, player car at the very back
+    const gridStartY = 300; // Starting line reference (higher up)
+    
+    for (let i = 0; i < 9; i++) {
+        const row = Math.floor(i / 2) + 1; 
         const col = i % 2;
-        const yOffset = CANVAS_HEIGHT - 280 - (row * 40); 
+        // Rivals ahead of player (smaller Y)
+        const yOffset = gridStartY - (row * 50); 
         spawnEntity(true, yOffset, col);
     }
+    
+    // Player at the back (larger Y)
+    playerPos.current = { x: CANVAS_WIDTH / 2 - CAR_WIDTH / 2, y: gridStartY + 40 };
     
     containerRef.current?.focus();
   };
@@ -351,17 +357,21 @@ export default function App() {
   }, [gameState, countdown]);
 
   useEffect(() => {
-    // Pre-initialize track configuration on mount so HUD components loaded at the start menu don't get NaN
+    // Pre-initialize track configuration on mount
     const segmentSize = 100;
     const totalSegments = Math.ceil(TOTAL_RACE_DISTANCE / segmentSize) + 10;
     trackCurvature.current = new Array(totalSegments).fill(0);
+    
     for (let i = 0; i < totalSegments; i++) {
-      if (i < 50) {
-        trackCurvature.current[i] = 0;
-      } else {
-        trackCurvature.current[i] = Math.sin(i * 0.20) * 880 + Math.sin(i * 0.08) * 320;
-      }
+        // Straight start for the first 20 segments (2000 units), then curves
+        if (i < 20) {
+            trackCurvature.current[i] = 0;
+        } else {
+            trackCurvature.current[i] = Math.sin(i * 0.25) * 1200 + Math.sin(i * 0.08) * 800;
+        }
     }
+    
+    // Extra smoothing
     for (let i = 5; i < totalSegments - 5; i++) {
       let sum = 0;
       for (let j = -5; j <= 5; j++) sum += trackCurvature.current[i + j];
@@ -752,11 +762,11 @@ export default function App() {
     const roadDeviation = roadCenter_player - CANVAS_WIDTH / 2;
     
     // Target camera values to keep road upright and centered under the player
-    const targetCameraAngle = -roadAngle;
+    const targetCameraAngle = -roadAngle * 1.3;
     const targetCameraSlide = -roadDeviation;
     
     // Smooth interpolation for camera follow movement and alignment
-    const lerpFactor = 0.08;
+    const lerpFactor = 0.12; // Increased responsiveness
     cameraAngleRef.current += (targetCameraAngle - cameraAngleRef.current) * lerpFactor;
     cameraSlideRef.current += (targetCameraSlide - cameraSlideRef.current) * lerpFactor;
 
@@ -786,7 +796,7 @@ export default function App() {
     // Apply 2.5D camera rotation, sliding, and speed-induced rumble vibrations around the player region
     ctx.save();
     const pivotX = CANVAS_WIDTH / 2;
-    const pivotY = CANVAS_HEIGHT - 100;
+    const pivotY = CANVAS_HEIGHT + 50;
     
     // Constant 0 values to keep the screen perfectly stabilized as requested, preventing any camera vibration/shake
     const shakeX = 0;
@@ -852,6 +862,32 @@ export default function App() {
           ctx.arc(rightAudienceX, y + segmentHeight / 2, audienceDotRadius, 0, Math.PI * 2);
           ctx.fill();
         }
+      }
+
+      // Simple House Block
+      if (Math.floor((y - distanceRef.current * 80) / 150) % 3 === 0) {
+        const houseWidth = 40 * wScale;
+        const houseHeight = 35 * wScale;
+        const leftHouseX = leftStairX - houseWidth - 10 * wScale;
+        const rightHouseX = rightStairX + currentStairWidth + 10 * wScale;
+        
+        ctx.fillStyle = '#4b5563'; // Slightly darker color
+        ctx.fillRect(leftHouseX, y - houseHeight, houseWidth, houseHeight);
+        ctx.fillRect(rightHouseX, y - houseHeight, houseWidth, houseHeight);
+        
+        // Roof
+        ctx.fillStyle = '#991b1b';
+        ctx.beginPath();
+        ctx.moveTo(leftHouseX, y - houseHeight);
+        ctx.lineTo(leftHouseX + houseWidth / 2, y - houseHeight - 15 * wScale);
+        ctx.lineTo(leftHouseX + houseWidth, y - houseHeight);
+        ctx.fill();
+        
+        ctx.beginPath();
+        ctx.moveTo(rightHouseX, y - houseHeight);
+        ctx.lineTo(rightHouseX + houseWidth / 2, y - houseHeight - 15 * wScale);
+        ctx.lineTo(rightHouseX + houseWidth, y - houseHeight);
+        ctx.fill();
       }
 
       // Road Surface
@@ -1146,7 +1182,7 @@ export default function App() {
           {(gameState === 'playing' || gameState === 'countdown') && (
             <div className="absolute top-3 inset-x-3 sm:inset-x-6 z-10 pointer-events-none select-none flex flex-col gap-2">
               {/* Glassmorphic digital instruments dashboard ribbon */}
-              <div className="w-full max-w-2xl mx-auto flex items-center justify-between bg-black/75 backdrop-blur-md px-4 py-2 rounded-2xl border border-neutral-800/80 shadow-2xl pointer-events-auto">
+              <div className="w-full max-w-2xl mx-auto flex items-center justify-between bg-neutral-900/40 backdrop-blur-lg px-4 py-2 rounded-2xl border border-neutral-700/50 shadow-xl pointer-events-auto">
                 
                 {/* 1. DIGITAL SPEEDOMETER (Left Instrument Panel) */}
                 <div className="flex flex-col">
@@ -1198,7 +1234,7 @@ export default function App() {
               </div>
 
               {/* Race Distance/Track Progress Meter Ribbon */}
-              <div className="w-full max-w-sm mx-auto bg-black/85 backdrop-blur-sm border border-neutral-800/80 rounded-full py-1.5 px-3.5 flex items-center justify-between gap-3 shadow-lg mt-1 select-none pointer-events-auto">
+              <div className="w-full max-w-sm mx-auto bg-neutral-900/40 backdrop-blur-lg border border-neutral-700/50 rounded-full py-1.5 px-3.5 flex items-center justify-between gap-3 shadow-lg mt-1 select-none pointer-events-auto">
                 <span className="text-[7.5px] font-black tracking-widest text-neutral-400 uppercase leading-none">PROGRESO</span>
                 
                 <div className="flex-1 h-2 bg-neutral-900 rounded-full relative overflow-hidden mx-1.5 border border-neutral-800/40">
@@ -1221,7 +1257,7 @@ export default function App() {
 
           {/* Floating Minimap Overlay (Visible on the right during active gameplay as requested) */}
           {(gameState === 'playing' || gameState === 'countdown') && (
-            <div className="absolute right-3 top-[22%] sm:right-5 z-10 pointer-events-none select-none flex flex-col items-center gap-1.5 bg-black/85 backdrop-blur-md px-2.5 py-3.5 rounded-2xl border border-neutral-800/80 shadow-2xl pointer-events-auto w-[64px] sm:w-[72px]">
+            <div className="absolute right-3 top-[22%] sm:right-5 z-10 pointer-events-none select-none flex flex-col items-center gap-1.5 bg-neutral-900/40 backdrop-blur-lg px-2.5 py-3.5 rounded-2xl border border-neutral-700/50 shadow-xl pointer-events-auto w-[64px] sm:w-[72px]">
               <span className="text-[6.5px] font-black tracking-widest text-neutral-400 uppercase leading-none">QUEDA</span>
               <span className="text-[10px] font-black italic text-cyan-400 tabular-nums leading-none">
                 {Math.max(0, Math.floor((TOTAL_RACE_DISTANCE - uiDistance) / 100))} KM
@@ -1232,7 +1268,7 @@ export default function App() {
                   <path
                     d={generateMinimapPath(34, 120)}
                     fill="none"
-                    stroke="rgba(255, 255, 255, 0.12)"
+                    stroke="rgba(255, 255, 255, 0.3)"
                     strokeWidth="3.5"
                     strokeLinecap="round"
                   />
@@ -1245,6 +1281,7 @@ export default function App() {
                     strokeDasharray="140"
                     strokeDashoffset={140 - (uiDistance / TOTAL_RACE_DISTANCE) * 140}
                     className="opacity-90"
+                    style={{ transition: 'stroke-dashoffset 0.5s linear' }}
                   />
                   <defs>
                     <linearGradient id="minimap-neon-glow" x1="0%" y1="100%" x2="0%" y2="0%">
@@ -1395,7 +1432,7 @@ export default function App() {
                 exit={{ opacity: 0, x: 50, scale: 0.9 }}
                 className="absolute right-4 top-[35%] -translate-y-1/2 z-10 pointer-events-none select-none flex flex-col items-end gap-1"
               >
-                <div className="bg-black/85 backdrop-blur-md border border-amber-500/30 p-3 rounded-2xl shadow-[0_0_20px_rgba(245,158,11,0.2)] flex flex-col items-end min-w-[130px]">
+                <div className="bg-neutral-900/40 backdrop-blur-lg border border-amber-500/30 p-3 rounded-2xl shadow-[0_0_20px_rgba(245,158,11,0.2)] flex flex-col items-end min-w-[130px]">
                   <span className="text-[8px] font-black tracking-widest text-amber-500 uppercase flex items-center gap-1">
                     <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" /> DERRAPANDO
                   </span>
