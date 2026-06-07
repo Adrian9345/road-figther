@@ -1062,20 +1062,57 @@ export default function App() {
       const drawHeight = CAR_HEIGHT * wScale_ent;
 
       if (entity.type === 'pothole') {
-        ctx.fillStyle = '#166534'; // Dark green leaves
+        const centerX = drawX + drawWidth / 2;
+        const centerY = entY + drawHeight / 2;
+        const radiusX = 28 * wScale_ent;
+        const radiusY = 16 * wScale_ent;
+
+        // 1. Draw outer dark asphalt crack / shadow representing the depth/depression
+        ctx.fillStyle = '#2c1810'; // Very dark/blackish brown
         ctx.beginPath();
-        ctx.ellipse(drawX + drawWidth / 2, entY + drawHeight / 2, 35 * wScale_ent, 25 * wScale_ent, 0, 0, Math.PI * 2);
+        ctx.ellipse(centerX, centerY, radiusX + 3 * wScale_ent, radiusY + 2 * wScale_ent, 0.1, 0, Math.PI * 2);
         ctx.fill();
-        ctx.fillStyle = '#451a03';
+
+        // 2. Main brown dirt / muddy pothole interior (café)
+        ctx.fillStyle = '#5c3a21'; // Classic brown (café)
         ctx.beginPath();
-        ctx.arc(drawX + drawWidth / 2, entY + drawHeight / 2, 10 * wScale_ent, 0, Math.PI * 2);
+        ctx.ellipse(centerX, centerY, radiusX, radiusY, 0.1, 0, Math.PI * 2);
         ctx.fill();
-        ctx.fillStyle = '#15803d';
-        for (let i = 0; i < 5; i++) {
-          ctx.beginPath();
-          ctx.ellipse(drawX + 10 * wScale_ent + i * 8 * wScale_ent, entY + 10 * wScale_ent + (i % 2) * 15 * wScale_ent, 12 * wScale_ent, 8 * wScale_ent, i, 0, Math.PI * 2);
-          ctx.fill();
-        }
+
+        // 3. Inner deeper circle or wet mud texture (darker brown)
+        ctx.fillStyle = '#3e2513'; // Darker café inside
+        ctx.beginPath();
+        ctx.ellipse(centerX - 2 * wScale_ent, centerY - 1 * wScale_ent, radiusX * 0.6, radiusY * 0.6, 0.05, 0, Math.PI * 2);
+        ctx.fill();
+
+        // 4. Draw detailed jagged cracks in asphalt expanding outwards
+        ctx.strokeStyle = '#1e0f06';
+        ctx.lineWidth = Math.max(1, 1.5 * wScale_ent);
+        
+        ctx.beginPath();
+        // Top-left crack
+        ctx.moveTo(centerX - radiusX * 0.8, centerY - radiusY * 0.4);
+        ctx.lineTo(centerX - radiusX * 1.3, centerY - radiusY * 0.7);
+        ctx.lineTo(centerX - radiusX * 1.5, centerY - radiusY * 0.5);
+
+        // Bottom-right crack
+        ctx.moveTo(centerX + radiusX * 0.8, centerY + radiusY * 0.4);
+        ctx.lineTo(centerX + radiusX * 1.2, centerY + radiusY * 0.8);
+        ctx.lineTo(centerX + radiusX * 1.4, centerY + radiusY * 0.6);
+
+        // Top-right crack
+        ctx.moveTo(centerX + radiusX * 0.5, centerY - radiusY * 0.7);
+        ctx.lineTo(centerX + radiusX * 0.9, centerY - radiusY * 1.1);
+        
+        ctx.stroke();
+
+        // 5. Highlights of dry clay/sand around the hole (light brown/tan café claro)
+        ctx.fillStyle = '#8c6239'; // Sand/terracotta light brown
+        ctx.beginPath();
+        ctx.arc(centerX + radiusX * 0.4, centerY + radiusY * 0.2, Math.max(1, 3 * wScale_ent), 0, Math.PI * 2);
+        ctx.arc(centerX - radiusX * 0.5, centerY - radiusY * 0.3, Math.max(1, 4 * wScale_ent), 0, Math.PI * 2);
+        ctx.fill();
+
         return;
       }
 
