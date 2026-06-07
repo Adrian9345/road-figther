@@ -146,27 +146,34 @@ export default function App() {
     return c1 + (c2 - c1) * t;
   };
 
+  // Helper to get coordinates on the static minimap track for a given distance
+  const getMinimapCoordsForDistance = (dist: number, width: number, height: number) => {
+    const progress = Math.min(Math.max(dist / TOTAL_RACE_DISTANCE, 0), 1);
+    const y = height - (progress * height);
+    const curve = getRoadCurveAtDistance(dist);
+    let maxCurvature = 0;
+    if (trackCurvature.current && trackCurvature.current.length > 0) {
+      for (const c of trackCurvature.current) {
+        if (Math.abs(c) > maxCurvature) maxCurvature = Math.abs(c);
+      }
+    }
+    if (maxCurvature === 0) maxCurvature = 1;
+    
+    // Wider horizontal scaling for very clear visual of the circuit curves
+    const relativeX = curve / (maxCurvature * 1.15); 
+    const x = width / 2 + relativeX * (width / 2 - 8);
+    return { x, y };
+  };
+
   // Helper vectors for rendering responsive HTML-based SVG track paths
   const generateMinimapPath = (width: number, height: number) => {
     if (trackCurvature.current.length === 0) return '';
     const points: string[] = [];
-    const totalPoints = 100;
-
-    // Calculate max absolute curvature for scaling to ensure entire track fits
-    let maxCurvature = 0;
-    for (const curve of trackCurvature.current) {
-        if (Math.abs(curve) > maxCurvature) maxCurvature = Math.abs(curve);
-    }
-    if (maxCurvature === 0) maxCurvature = 1;
+    const totalPoints = 120;
 
     for (let i = 0; i <= totalPoints; i++) {
         const dist = (i / totalPoints) * TOTAL_RACE_DISTANCE;
-        const curve = getRoadCurveAtDistance(dist);
-        
-        // Scale curve to fit within width with a small margin
-        const relativeX = curve / (maxCurvature * 1.25); 
-        const x = width / 2 + relativeX * (width / 2 - 5);
-        const y = height - (i / totalPoints) * height;
+        const { x, y } = getMinimapCoordsForDistance(dist, width, height);
         if (i === 0) points.push(`M ${x} ${y}`);
         else points.push(`L ${x} ${y}`);
     }
@@ -174,17 +181,26 @@ export default function App() {
   };
 
   const getPlayerMinimapCoords = (width: number, height: number) => {
-    const progress = Math.min(uiDistance / TOTAL_RACE_DISTANCE, 1);
-    const y = height - (progress * height);
-    const currentCurve = getRoadCurveAtDistance(uiDistance);
-    let maxCurvature = 0;
-    for (const curve of trackCurvature.current) {
-        if (Math.abs(curve) > maxCurvature) maxCurvature = Math.abs(curve);
-    }
-    if (maxCurvature === 0) maxCurvature = 1;
-    const pRelativeX = currentCurve / (maxCurvature * 1.25);
-    const x = width / 2 + pRelativeX * (width / 2 - 5);
-    return { x, y };
+    return getMinimapCoordsForDistance(uiDistance, width, height);
+  };
+
+  const getMinimapEntities = (width: number, height: number) => {
+    const playerY = playerPos.current.y;
+    return entities.current.map(entity => {
+      // Calculate entity's absolute world distance based on their relative y coordinate to playerY
+      const relativeDist = (playerY - entity.y) / 100;
+      const entityDistance = distanceRef.current + relativeDist;
+      
+      const { x, y } = getMinimapCoordsForDistance(entityDistance, width, height);
+      return {
+        id: entity.id,
+        type: entity.type,
+        color: entity.color,
+        x,
+        y,
+        visible: entityDistance >= 0 && entityDistance <= TOTAL_RACE_DISTANCE
+      };
+    });
   };
 
   // Helper to get road center at a specific Y coordinate with flat top-down birds-eye projection
@@ -1387,32 +1403,96 @@ export default function App() {
 
           {/* Floating Minimap Overlay (Visible on the right during active gameplay as requested) */}
           {(gameState === 'playing' || gameState === 'countdown') && (
-            <div className="absolute right-3 top-[22%] sm:right-5 z-10 pointer-events-none select-none flex flex-col items-center gap-1.5 bg-neutral-900/40 backdrop-blur-lg px-2.5 py-3.5 rounded-2xl border border-neutral-700/50 shadow-xl pointer-events-auto w-[64px] sm:w-[72px]">
+            <div className="absolute right-3 top-[22%] sm:right-5 z-10 pointer-events-none select-none flex flex-col items-center gap-1.5 bg-neutral-900/60 backdrop-blur-lg px-2.5 py-3.5 rounded-2xl border border-neutral-700/50 shadow-xl pointer-events-auto w-[84px] sm:w-[94px]">
               <span className="text-[6.5px] font-black tracking-widest text-neutral-400 uppercase leading-none">QUEDA</span>
               <span className="text-[10px] font-black italic text-cyan-400 tabular-nums leading-none">
                 {Math.max(0, Math.floor((TOTAL_RACE_DISTANCE - uiDistance) / 100))} KM
               </span>
               
-              <div className="relative w-[34px] h-[120px] sm:h-[135px] mt-2 flex items-center justify-center">
-                <svg width="34" height="120" viewBox="0 0 34 120" className="opacity-95">
+              <div className="relative w-[54px] h-[140px] mt-2.5 flex items-center justify-center">
+                <svg width="54" height="140" viewBox="0 0 54 140" className="opacity-95">
+                  {/* Broad Road Pavement Base (Gives a clean "entire circuit" highway shape) */}
                   <path
-                    d={generateMinimapPath(34, 120)}
+                    d={generateMinimapPath(54, 140)}
                     fill="none"
-                    stroke="rgba(255, 255, 255, 0.3)"
-                    strokeWidth="3.5"
+                    stroke="#1e293b"
+                    strokeWidth="8"
                     strokeLinecap="round"
+                    strokeLinejoin="round"
+                    className="opacity-80"
                   />
+                  {/* Road Center Dashes */}
                   <path
-                    d={generateMinimapPath(34, 120)}
+                    d={generateMinimapPath(54, 140)}
+                    fill="none"
+                    stroke="#facc15"
+                    strokeWidth="0.8"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeDasharray="4,4"
+                    className="opacity-40"
+                  />
+                  {/* Active segment completed (neon glow overlay) */}
+                  <path
+                    d={generateMinimapPath(54, 140)}
                     fill="none"
                     stroke="url(#minimap-neon-glow)"
-                    strokeWidth="4.5"
+                    strokeWidth="4"
                     strokeLinecap="round"
-                    strokeDasharray="140"
-                    strokeDashoffset={140 - (uiDistance / TOTAL_RACE_DISTANCE) * 140}
-                    className="opacity-90"
-                    style={{ transition: 'stroke-dashoffset 0.5s linear' }}
+                    strokeLinejoin="round"
+                    pathLength="100"
+                    strokeDasharray="100"
+                    strokeDashoffset={100 - (uiDistance / TOTAL_RACE_DISTANCE) * 100}
+                    className="opacity-90 transition-all duration-300"
                   />
+                  {/* Start horizontal line marker */}
+                  <line
+                    x1={getMinimapCoordsForDistance(0, 54, 140).x - 6}
+                    y1={getMinimapCoordsForDistance(0, 54, 140).y}
+                    x2={getMinimapCoordsForDistance(0, 54, 140).x + 6}
+                    y2={getMinimapCoordsForDistance(0, 54, 140).y}
+                    stroke="#10b981"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                  />
+                  {/* Goal checkpoint line */}
+                  <line
+                    x1={getMinimapCoordsForDistance(TOTAL_RACE_DISTANCE, 54, 140).x - 6}
+                    y1={getMinimapCoordsForDistance(TOTAL_RACE_DISTANCE, 54, 140).y}
+                    x2={getMinimapCoordsForDistance(TOTAL_RACE_DISTANCE, 54, 140).x + 6}
+                    y2={getMinimapCoordsForDistance(TOTAL_RACE_DISTANCE, 54, 140).y}
+                    stroke="#ef4444"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                  />
+                  {/* Dynamic tracking dots for opponent rivals, obstacles, and items */}
+                  {getMinimapEntities(54, 140).map(ent => {
+                    if (!ent.visible) return null;
+                    let color = ent.color;
+                    let r = 2;
+                    if (ent.type === 'rival' || ent.type === 'enemy') {
+                      color = ent.type === 'rival' ? '#f59e0b' : '#ef4444';
+                      r = 2.5;
+                    } else if (ent.type === 'fuel') {
+                      color = '#10b981';
+                      r = 2;
+                    } else {
+                      // Miscellaneous obstacles
+                      color = '#6b7280';
+                      r = 1.5;
+                    }
+                    return (
+                      <circle
+                        key={ent.id}
+                        cx={ent.x}
+                        cy={ent.y}
+                        r={r}
+                        fill={color}
+                        stroke="#0a0a0a"
+                        strokeWidth="0.5"
+                      />
+                    );
+                  })}
                   <defs>
                     <linearGradient id="minimap-neon-glow" x1="0%" y1="100%" x2="0%" y2="0%">
                       <stop offset="0%" stopColor="#3b82f6" />
@@ -1420,17 +1500,17 @@ export default function App() {
                     </linearGradient>
                   </defs>
                 </svg>
-                {/* Finish label */}
+                {/* Finish label overlay at top of the map track */}
                 <span className="absolute top-[-15px] text-[10px] leading-none select-none animate-bounce">🏁</span>
                 {/* Pulse dot representing the player car */}
                 <div
-                  className="absolute w-3.5 h-3.5 bg-cyan-400 rounded-full border-2 border-white shadow-[0_0_10px_rgba(34,211,238,0.9)] -translate-x-1/2 -translate-y-1/2 transition-all duration-75 flex items-center justify-center animate-pulse"
+                  className="absolute w-3 h-3 bg-cyan-400 rounded-full border border-white shadow-[0_0_10px_rgba(34,211,238,0.9)] -translate-x-1/2 -translate-y-1/2 transition-all duration-75 flex items-center justify-center animate-pulse"
                   style={{
-                    left: `${getPlayerMinimapCoords(34, 120).x}px`,
-                    top: `${getPlayerMinimapCoords(34, 120).y}px`,
+                    left: `${getPlayerMinimapCoords(54, 140).x}px`,
+                    top: `${getPlayerMinimapCoords(54, 140).y}px`,
                   }}
                 >
-                  <div className="w-1.5 h-1.5 bg-white rounded-full" />
+                  <div className="w-1 h-1 bg-white rounded-full" />
                 </div>
               </div>
             </div>
@@ -1678,13 +1758,87 @@ export default function App() {
                       <MapIcon className="w-6 h-6 text-blue-500" />
                       <h3 className="text-xl font-black italic uppercase tracking-tighter text-blue-400">Circuito de Datos</h3>
                     </div>
-                    <div className="aspect-video bg-neutral-950 rounded-xl border-2 border-neutral-800 relative overflow-hidden flex flex-col items-center justify-center p-3">
-                      <div className="text-neutral-800 font-black text-4xl opacity-15 absolute">S-CURVE</div>
-                      <p className="text-neutral-300 font-extrabold text-[11px] mb-2 z-10">LONGITUD: 30 KM</p>
-                      <div className="flex flex-wrap gap-1.5 justify-center z-10">
-                        <span className="px-1.5 py-0.5 bg-blue-500/10 rounded text-blue-400 text-[9px] font-black uppercase">CURVAS</span>
-                        <span className="px-1.5 py-0.5 bg-amber-500/10 rounded text-amber-400 text-[9px] font-black uppercase">ACEITE</span>
-                        <span className="px-1.5 py-0.5 bg-red-500/10 rounded text-red-500 text-[9px] font-black uppercase">BACHES</span>
+                    <div className="w-full h-36 bg-neutral-950 rounded-xl border border-neutral-800 relative overflow-hidden flex flex-col items-center justify-center p-2.5">
+                      <div className="text-neutral-900 font-black text-2xl opacity-10 absolute pointer-events-none select-none">S-CURVE TELEMETRY</div>
+                      
+                      <div className="relative w-[120px] h-[100px] flex items-center justify-center">
+                        <svg width="120" height="100" viewBox="0 0 120 100" className="opacity-95">
+                          {/* Main road track width backing */}
+                          <path
+                            d={generateMinimapPath(120, 100)}
+                            fill="none"
+                            stroke="#1e293b"
+                            strokeWidth="10"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            className="opacity-80"
+                          />
+                          {/* Centered road divider dashes */}
+                          <path
+                            d={generateMinimapPath(120, 100)}
+                            fill="none"
+                            stroke="#facc15"
+                            strokeWidth="1"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeDasharray="4,4"
+                            className="opacity-40"
+                          />
+                          {/* Glowing completion overlay representing player's coverage */}
+                          <path
+                            d={generateMinimapPath(120, 100)}
+                            fill="none"
+                            stroke="url(#minimap-neon-glow)"
+                            strokeWidth="4"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            pathLength="100"
+                            strokeDasharray="100"
+                            strokeDashoffset={100 - (uiDistance / TOTAL_RACE_DISTANCE) * 100}
+                            className="opacity-90"
+                          />
+                          {/* Start Line Green */}
+                          <line
+                            x1={getMinimapCoordsForDistance(0, 120, 100).x - 8}
+                            y1={getMinimapCoordsForDistance(0, 120, 100).y}
+                            x2={getMinimapCoordsForDistance(0, 120, 100).x + 8}
+                            y2={getMinimapCoordsForDistance(0, 120, 100).y}
+                            stroke="#10b981"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                          />
+                          {/* Finish Line Checkered */}
+                          <line
+                            x1={getMinimapCoordsForDistance(TOTAL_RACE_DISTANCE, 120, 100).x - 8}
+                            y1={getMinimapCoordsForDistance(TOTAL_RACE_DISTANCE, 120, 100).y}
+                            x2={getMinimapCoordsForDistance(TOTAL_RACE_DISTANCE, 120, 100).x + 8}
+                            y2={getMinimapCoordsForDistance(TOTAL_RACE_DISTANCE, 120, 100).y}
+                            stroke="#ef4444"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                          />
+                          {/* Pulsing visual cursor representing final position reached */}
+                          <circle
+                            cx={getPlayerMinimapCoords(120, 100).x}
+                            cy={getPlayerMinimapCoords(120, 100).y}
+                            r="4.5"
+                            fill="#22d3ee"
+                            stroke="#ffffff"
+                            strokeWidth="1.2"
+                            className="animate-pulse"
+                          />
+                        </svg>
+                        {/* Checkered flag overlay beside the finish line */}
+                        <span className="absolute text-sm select-none" style={{
+                          left: `${getMinimapCoordsForDistance(TOTAL_RACE_DISTANCE, 120, 100).x + 16}px`,
+                          top: `${getMinimapCoordsForDistance(TOTAL_RACE_DISTANCE, 120, 100).y - 6}px`
+                        }}>🏁</span>
+                      </div>
+                      
+                      <div className="flex gap-4 mt-2 justify-center z-10 text-[9px] font-black tracking-tight text-neutral-400">
+                        <span>LONGITUD: 30 KM</span>
+                        <span className="text-emerald-400 font-bold">START</span>
+                        <span className="text-red-400 font-bold">GOAL</span>
                       </div>
                     </div>
                   </motion.div>
