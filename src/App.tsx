@@ -871,7 +871,7 @@ export default function App() {
         const leftHouseX = leftStairX - houseWidth - 10 * wScale;
         const rightHouseX = rightStairX + currentStairWidth + 10 * wScale;
         
-        ctx.fillStyle = '#4b5563'; // Slightly darker color
+        ctx.fillStyle = '#78350f'; // Brown color for houses
         ctx.fillRect(leftHouseX, y - houseHeight, houseWidth, houseHeight);
         ctx.fillRect(rightHouseX, y - houseHeight, houseWidth, houseHeight);
         
