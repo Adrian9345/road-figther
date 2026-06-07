@@ -959,30 +959,171 @@ export default function App() {
         }
       }
 
-      // Simple House Block
-      if (Math.floor((y - distanceRef.current * 80) / 150) % 3 === 0) {
-        const houseWidth = 40 * wScale;
-        const houseHeight = 35 * wScale;
-        const leftHouseX = leftStairX - houseWidth - 10 * wScale;
-        const rightHouseX = rightStairX + currentStairWidth + 10 * wScale;
+      // Elegant Detailed Retro-Rustic Houses (Optimized density & beautiful 3D side perspective)
+      const houseSpawnIndex = Math.floor((y - distanceRef.current * 80) / 150);
+      if (houseSpawnIndex % 8 === 0) {
+        const isLeft = (houseSpawnIndex / 8) % 2 === 0;
+        const houseWidth = 48 * wScale;
+        const houseHeight = 38 * wScale;
+        const leftHouseX = leftStairX - houseWidth - 12 * wScale;
+        const rightHouseX = rightStairX + currentStairWidth + 12 * wScale;
         
-        ctx.fillStyle = '#78350f'; // Brown color for houses
-        ctx.fillRect(leftHouseX, y - houseHeight, houseWidth, houseHeight);
-        ctx.fillRect(rightHouseX, y - houseHeight, houseWidth, houseHeight);
-        
-        // Roof
-        ctx.fillStyle = '#991b1b';
-        ctx.beginPath();
-        ctx.moveTo(leftHouseX, y - houseHeight);
-        ctx.lineTo(leftHouseX + houseWidth / 2, y - houseHeight - 15 * wScale);
-        ctx.lineTo(leftHouseX + houseWidth, y - houseHeight);
-        ctx.fill();
-        
-        ctx.beginPath();
-        ctx.moveTo(rightHouseX, y - houseHeight);
-        ctx.lineTo(rightHouseX + houseWidth / 2, y - houseHeight - 15 * wScale);
-        ctx.lineTo(rightHouseX + houseWidth, y - houseHeight);
-        ctx.fill();
+        const drawDetailedHouse = (x: number, isLeftHouse: boolean) => {
+          const frontWidth = houseWidth * 0.65;
+          const sideWidth = houseWidth * 0.35;
+          
+          // Define coordinates based on side to project them turned sideways ("de lado")
+          let fx: number, sx: number, sEdgeX: number;
+          const wallShadow = '#451a03';
+          const wallFront = '#854d0e';
+          
+          if (isLeftHouse) {
+            // Front face is on the left, side face angles matching the curve towards the road on the right
+            fx = x;
+            sx = x + frontWidth;
+            sEdgeX = x + houseWidth;
+          } else {
+            // Front face is on the right, side face angles matching the curve towards the road on the left
+            fx = x + sideWidth;
+            sx = x + sideWidth;
+            sEdgeX = x;
+          }
+
+          // 1. Shaded Foundation Plate
+          ctx.fillStyle = '#1e293b'; 
+          ctx.beginPath();
+          ctx.moveTo(fx - 2 * wScale, y);
+          ctx.lineTo(sEdgeX + (isLeftHouse ? 2 : -2) * wScale, y + (isLeftHouse ? 2 : 2) * wScale);
+          ctx.lineTo(sEdgeX + (isLeftHouse ? 2 : -2) * wScale, y + (isLeftHouse ? 4 : 4) * wScale);
+          ctx.lineTo(fx - 2 * wScale, y + 2 * wScale);
+          ctx.closePath();
+          ctx.fill();
+
+          // 2. Front Wall (Cozy wooden timber siding)
+          ctx.fillStyle = wallFront;
+          ctx.fillRect(fx, y - houseHeight, frontWidth, houseHeight);
+
+          // 3. Side Wall (Slanted 3D depth wall to achieve the "de lado" perspective)
+          ctx.fillStyle = wallShadow;
+          ctx.beginPath();
+          ctx.moveTo(sx, y - houseHeight);
+          ctx.lineTo(sEdgeX, y - houseHeight + 3 * wScale);
+          ctx.lineTo(sEdgeX, y + 2 * wScale);
+          ctx.lineTo(sx, y);
+          ctx.closePath();
+          ctx.fill();
+
+          // Draw rustic siding lines only on the front wall
+          ctx.strokeStyle = '#3b1c0c';
+          ctx.lineWidth = 1;
+          for (let sy = y - houseHeight + 6 * wScale; sy < y; sy += 7 * wScale) {
+            ctx.beginPath();
+            ctx.moveTo(fx, sy);
+            ctx.lineTo(fx + frontWidth, sy);
+            ctx.stroke();
+          }
+
+          // 4. Sloped 3D Roof
+          const peakX1 = fx + frontWidth / 2;
+          const peakY1 = y - houseHeight - 16 * wScale;
+          const peakX2 = isLeftHouse ? sx + sideWidth / 2 : sEdgeX + sideWidth / 2;
+          const peakY2 = y - houseHeight - 12 * wScale;
+
+          // Front Roof Face (Main terracotta red)
+          ctx.fillStyle = '#b91c1c';
+          ctx.beginPath();
+          ctx.moveTo(fx - 3 * wScale, y - houseHeight);
+          ctx.lineTo(peakX1, peakY1);
+          ctx.lineTo(sx + 3 * wScale, y - houseHeight);
+          ctx.closePath();
+          ctx.fill();
+
+          // Side Roof Face (Darker terracotta shaded panel)
+          ctx.fillStyle = '#7f1d1d';
+          ctx.beginPath();
+          ctx.moveTo(sx + 3 * wScale, y - houseHeight);
+          ctx.lineTo(peakX1, peakY1);
+          ctx.lineTo(peakX2, peakY2);
+          ctx.lineTo(sEdgeX + (isLeftHouse ? 3 : -3) * wScale, y - houseHeight + 3 * wScale);
+          ctx.closePath();
+          ctx.fill();
+
+          // Highlight trim lines
+          ctx.strokeStyle = '#fca5a5';
+          ctx.lineWidth = Math.max(1, 1.2 * wScale);
+          ctx.beginPath();
+          ctx.moveTo(peakX1, peakY1);
+          ctx.lineTo(peakX2, peakY2);
+          ctx.stroke();
+
+          ctx.beginPath();
+          ctx.moveTo(fx - 3 * wScale, y - houseHeight);
+          ctx.lineTo(peakX1, peakY1);
+          ctx.lineTo(sx + 3 * wScale, y - houseHeight);
+          ctx.stroke();
+
+          // 5. Door (Teal wood panel on front facade)
+          const doorWidth = 9 * wScale;
+          const doorHeight = 18 * wScale;
+          const doorX = fx + frontWidth * 0.55;
+          const doorY = y - doorHeight;
+          ctx.fillStyle = '#0f766e';
+          ctx.fillRect(doorX, doorY, doorWidth, doorHeight);
+          
+          ctx.strokeStyle = '#042f2e';
+          ctx.lineWidth = 1;
+          ctx.strokeRect(doorX, doorY, doorWidth, doorHeight);
+
+          // Gold/brass doorknob
+          ctx.fillStyle = '#fbbf24';
+          ctx.beginPath();
+          ctx.arc(doorX + 2 * wScale, doorY + doorHeight * 0.55, 1 * wScale, 0, Math.PI * 2);
+          ctx.fill();
+
+          // 6. Glowing Window (On front facade)
+          const winWidth = 11 * wScale;
+          const winHeight = 11 * wScale;
+          const winX = fx + frontWidth * 0.12;
+          const winY = y - houseHeight + 8 * wScale;
+
+          ctx.fillStyle = '#fef08a';
+          ctx.fillRect(winX, winY, winWidth, winHeight);
+
+          ctx.strokeStyle = '#451a03';
+          ctx.lineWidth = 1;
+          ctx.strokeRect(winX, winY, winWidth, winHeight);
+          
+          ctx.beginPath();
+          ctx.moveTo(winX + winWidth / 2, winY);
+          ctx.lineTo(winX + winWidth / 2, winY + winHeight);
+          ctx.moveTo(winX, winY + winHeight / 2);
+          ctx.lineTo(winX + winWidth, winY + winHeight / 2);
+          ctx.stroke();
+
+          // 7. Small Slanted side window
+          const sWinX = isLeftHouse ? sx + 4 * wScale : sEdgeX + 4 * wScale;
+          const sWinY = y - houseHeight + 9 * wScale;
+          const sWinW = 6 * wScale;
+          const sWinH = 8 * wScale;
+
+          ctx.fillStyle = '#fde047';
+          ctx.beginPath();
+          ctx.moveTo(sWinX, sWinY);
+          ctx.lineTo(sWinX + sWinW, sWinY + (isLeftHouse ? 1 : -1) * wScale);
+          ctx.lineTo(sWinX + sWinW, sWinY + sWinH + (isLeftHouse ? 1 : -1) * wScale);
+          ctx.lineTo(sWinX, sWinY + sWinH);
+          ctx.closePath();
+          ctx.fill();
+
+          ctx.strokeStyle = '#451a03';
+          ctx.stroke();
+        };
+
+        if (isLeft) {
+          drawDetailedHouse(leftHouseX, true);
+        } else {
+          drawDetailedHouse(rightHouseX, false);
+        }
       }
 
       // Road Surface
