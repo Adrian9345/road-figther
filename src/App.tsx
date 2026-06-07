@@ -177,7 +177,12 @@ export default function App() {
     const progress = Math.min(uiDistance / TOTAL_RACE_DISTANCE, 1);
     const y = height - (progress * height);
     const currentCurve = getRoadCurveAtDistance(uiDistance);
-    const pRelativeX = currentCurve / 450;
+    let maxCurvature = 0;
+    for (const curve of trackCurvature.current) {
+        if (Math.abs(curve) > maxCurvature) maxCurvature = Math.abs(curve);
+    }
+    if (maxCurvature === 0) maxCurvature = 1;
+    const pRelativeX = currentCurve / (maxCurvature * 1.25);
     const x = width / 2 + pRelativeX * (width / 2 - 5);
     return { x, y };
   };
@@ -320,19 +325,21 @@ export default function App() {
     trackCurvature.current = new Array(totalSegments).fill(0);
     
     for (let i = 0; i < totalSegments; i++) {
-        // Straight start for the first 10 segments (1000 units), then curves
-        if (i < 10) {
+        // Straight start for the first 5 segments (500 units), then the S-curve
+        if (i < 5) {
             trackCurvature.current[i] = 0;
         } else {
-            trackCurvature.current[i] = Math.sin(i * 0.003) * 12000;
+            const progress = (i - 5) / (totalSegments - 5);
+            // Master S-curve: completed sine period across the track
+            trackCurvature.current[i] = Math.sin(progress * 2 * Math.PI) * 12000;
         }
     }
     
-    // Extra smoothing
-    for (let i = 20; i < totalSegments - 20; i++) {
+    // Smooth the transition gently
+    for (let i = 2; i < totalSegments - 2; i++) {
       let sum = 0;
-      for (let j = -20; j <= 20; j++) sum += trackCurvature.current[i + j];
-      trackCurvature.current[i] = sum / 41;
+      for (let j = -2; j <= 2; j++) sum += trackCurvature.current[i + j];
+      trackCurvature.current[i] = sum / 5;
     }
     
     // Setup Starting Grid: 9 rivals in front, player car at the very back
@@ -372,19 +379,21 @@ export default function App() {
     trackCurvature.current = new Array(totalSegments).fill(0);
     
     for (let i = 0; i < totalSegments; i++) {
-        // Straight start for the first 10 segments (1000 units), then curves
-        if (i < 10) {
+        // Straight start for the first 5 segments (500 units), then the S-curve
+        if (i < 5) {
             trackCurvature.current[i] = 0;
         } else {
-            trackCurvature.current[i] = Math.sin(i * 0.003) * 12000;
+            const progress = (i - 5) / (totalSegments - 5);
+            // Master S-curve: completed sine period across the track
+            trackCurvature.current[i] = Math.sin(progress * 2 * Math.PI) * 12000;
         }
     }
     
-    // Extra smoothing
-    for (let i = 20; i < totalSegments - 20; i++) {
+    // Smooth the transition gently
+    for (let i = 2; i < totalSegments - 2; i++) {
       let sum = 0;
-      for (let j = -20; j <= 20; j++) sum += trackCurvature.current[i + j];
-      trackCurvature.current[i] = sum / 41;
+      for (let j = -2; j <= 2; j++) sum += trackCurvature.current[i + j];
+      trackCurvature.current[i] = sum / 5;
     }
   }, []);
 
@@ -508,9 +517,11 @@ export default function App() {
       }
     }
 
-    // Smooth Player Angle (Road Curve + Steering Tilt + Drift Body Yaw)
+    // Smooth Player Angle (Road Curve + Steering Tilt + Drift Body Yaw + Natural Curving oversteer offset)
     const targetPlayerAngle = getRoadAngleAt(playerPos.current.y + CAR_HEIGHT / 2, distanceRef.current);
     const steeringTilt = isLeft ? -0.06 : (isRight ? 0.06 : 0);
+    const currentCurveVal = getRoadCurveAtDistance(distanceRef.current);
+    const naturalCurveTilt = -(currentCurveVal / 12000) * 0.12; // Visual nose turn into the corner apex
     
     // Smooth interpolation for drifting chassis yaw (car points sideways relative to travel)
     const targetDriftYaw = isDriftingRef.current 
@@ -518,7 +529,7 @@ export default function App() {
       : 0;
     driftAngleRef.current += (targetDriftYaw - driftAngleRef.current) * 0.12;
 
-    playerAngle.current += (targetPlayerAngle + steeringTilt - playerAngle.current) * 0.08;
+    playerAngle.current += (targetPlayerAngle + steeringTilt + naturalCurveTilt - playerAngle.current) * 0.08;
 
     // Road Curving Logic
     roadCurve.current = getRoadCurveAtDistance(distanceRef.current);
@@ -656,14 +667,72 @@ export default function App() {
         }
       }
 
-      // Update X based on laneOffset and current road curve at its Y
+      // Update X based on laneOffset and current road curve at its Y (adding centrifugal physical slip in curves)
       const entRoadX = getRoadXAt(entity.y, distanceRef.current);
-      entity.x = entRoadX + entity.laneOffset;
+      const localWorldDist = distanceRef.current + (displayHeightRef.current - entity.y) / 100;
+      const localCurve = getRoadCurveAtDistance(localWorldDist);
+      
+      let currentSlip = 0;
+      if (entity.type === 'rival' || entity.type === 'enemy') {
+        currentSlip = (localCurve / 12000) * -18; // Physically slide outwards on turns
+      }
+      entity.x = entRoadX + entity.laneOffset + currentSlip;
 
-      // Smooth Entity Angle
-      const targetEntityAngle = getRoadAngleAt(entity.y + CAR_HEIGHT / 2, distanceRef.current);
+      // Smooth Entity Angle with dynamic cornering oversteer yaw
+      let oversteerAngle = 0;
+      if (entity.type === 'rival' || entity.type === 'enemy') {
+        const oversteerRatio = localCurve / 12000;
+        oversteerAngle = -oversteerRatio * 0.22; // Nose angles into the apex/inside of the turn
+      }
+      const targetEntityAngle = getRoadAngleAt(entity.y + CAR_HEIGHT / 2, distanceRef.current) + oversteerAngle;
       // Smoother entity angle transition: reduced factor from 0.1 to 0.05
       entity.angle += (targetEntityAngle - entity.angle) * 0.05;
+
+      // Spawn smoke & sparks from rear tires if rivals/enemies are aggressively cornering
+      if ((entity.type === 'rival' || entity.type === 'enemy') && Math.abs(localCurve) > 2000) {
+        const cosE = Math.cos(entity.angle);
+        const sinE = Math.sin(entity.angle);
+        const enemyCenterX = entity.x + CAR_WIDTH / 2;
+        const enemyCenterY = entity.y + CAR_HEIGHT / 2;
+        
+        const erLeftX = enemyCenterX + (-CAR_WIDTH / 2 + 3) * cosE - (CAR_HEIGHT / 2 - 4) * sinE;
+        const erLeftY = enemyCenterY + (-CAR_WIDTH / 2 + 3) * sinE + (CAR_HEIGHT / 2 - 4) * cosE;
+        
+        const erRightX = enemyCenterX + (CAR_WIDTH / 2 - 3) * cosE - (CAR_HEIGHT / 2 - 4) * sinE;
+        const erRightY = enemyCenterY + (CAR_WIDTH / 2 - 3) * sinE + (CAR_HEIGHT / 2 - 4) * cosE;
+        
+        const enemyTires = [{ x: erLeftX, y: erLeftY }, { x: erRightX, y: erRightY }];
+        
+        enemyTires.forEach(tire => {
+          // Dynamic tire smoke
+          if (Math.random() < 0.12) {
+            particlesRef.current.push({
+              x: tire.x,
+              y: tire.y,
+              vx: (Math.random() - 0.5) * 0.8,
+              vy: Math.random() * 0.3 + 0.1,
+              size: Math.random() * 1.8 + 1.5,
+              alpha: 0.22 + Math.random() * 0.08,
+              color: '156, 163, 175', // Ash grey smoke
+              decay: Math.random() * 0.022 + 0.016
+            });
+          }
+          // Dynamic heat friction sparks
+          if (Math.abs(localCurve) > 4500 && Math.random() < 0.1) {
+            particlesRef.current.push({
+              x: tire.x,
+              y: tire.y,
+              vx: (Math.random() - 0.5) * 2.8,
+              vy: -Math.random() * 1.2 - 0.4,
+              size: Math.random() * 1.0 + 0.8,
+              alpha: 0.85,
+              color: '251, 146, 60', // Warm orange sparks
+              decay: Math.random() * 0.06 + 0.035,
+              isSpark: true
+            });
+          }
+        });
+      }
 
       // Collision detection
       const collisionPadding = entity.type === 'oil' || entity.type === 'pothole' ? 20 : 0;
@@ -770,12 +839,12 @@ export default function App() {
     const roadCenter_player = roadX1;
     const roadDeviation = roadCenter_player - CANVAS_WIDTH / 2;
     
-    // Target camera values to keep road upright and centered under the player
-    const targetCameraAngle = -roadAngle * 1.3;
-    const targetCameraSlide = -roadDeviation;
+    // Target camera values: blend natural road incline and steering wheel tilt for responsive banking, and add modern lateral camera sway
+    const targetCameraAngle = -roadAngle * 0.8 + (steeringTilt * 0.15);
+    const targetCameraSlide = -roadDeviation * 0.55; // Simulates centrifugal drift, track sways fluidly on the screen
     
-    // Smooth interpolation for camera follow movement and alignment
-    const lerpFactor = 0.12; // Increased responsiveness
+    // Smooth interpolation for camera follow movement and alignment (lower factor = richer sense of mass/weight)
+    const lerpFactor = 0.08; 
     cameraAngleRef.current += (targetCameraAngle - cameraAngleRef.current) * lerpFactor;
     cameraSlideRef.current += (targetCameraSlide - cameraSlideRef.current) * lerpFactor;
 
@@ -1099,9 +1168,41 @@ export default function App() {
     const playerDrawWidth = CAR_WIDTH * wScale_play;
     const playerDrawHeight = CAR_HEIGHT * wScale_play;
 
+    const keysLeft = keys.current['arrowleft'] || keys.current['a'];
+    const keysRight = keys.current['arrowright'] || keys.current['d'];
+    const normalizedSpeed = speedRef.current / MAX_SPEED;
+    const bodyRollOffset = (roadCurve.current / 12000) * -3.5 * normalizedSpeed; 
+    const steeringVisualAngle = keysLeft ? -0.16 : (keysRight ? 0.16 : 0);
+
     ctx.save();
     ctx.translate(playerDrawX + playerDrawWidth / 2, playerY + playerDrawHeight / 2);
     ctx.rotate(playerAngle.current + driftAngleRef.current);
+
+    // Draw detailed rubber tires
+    ctx.fillStyle = '#1e293b'; 
+    const wheelW = 3.5 * wScale_play;
+    const wheelH = 7.5 * wScale_play;
+    
+    // Rear wheels
+    ctx.fillRect(-playerDrawWidth / 2 - 1, playerDrawHeight / 2 - 11 * wScale_play, wheelW, wheelH);
+    ctx.fillRect(playerDrawWidth / 2 + 1 - wheelW, playerDrawHeight / 2 - 11 * wScale_play, wheelW, wheelH);
+    
+    // Front steerable wheels
+    ctx.save();
+    ctx.translate(-playerDrawWidth / 2 + wheelW / 2, -playerDrawHeight / 2 + 8 * wScale_play);
+    ctx.rotate(steeringVisualAngle);
+    ctx.fillRect(-wheelW / 2, -wheelH / 2, wheelW, wheelH);
+    ctx.restore();
+    
+    ctx.save();
+    ctx.translate(playerDrawWidth / 2 - wheelW / 2, -playerDrawHeight / 2 + 8 * wScale_play);
+    ctx.rotate(steeringVisualAngle);
+    ctx.fillRect(-wheelW / 2, -wheelH / 2, wheelW, wheelH);
+    ctx.restore();
+
+    // Draw Chassis body under suspension translation roll
+    ctx.save();
+    ctx.translate(bodyRollOffset, 0);
 
     ctx.fillStyle = '#3b82f6'; 
     ctx.fillRect(-playerDrawWidth / 2, -playerDrawHeight / 2, playerDrawWidth, playerDrawHeight);
@@ -1109,7 +1210,7 @@ export default function App() {
     ctx.fillStyle = '#1d4ed8';
     ctx.fillRect(-playerDrawWidth / 2 - 2 * wScale_play, playerDrawHeight / 2 - 5 * wScale_play, playerDrawWidth + 4 * wScale_play, 8 * wScale_play);
     
-    ctx.fillStyle = 'rgba(255,255,255,0.5)';
+    ctx.fillStyle = 'rgba(255,255,255,0.55)';
     ctx.fillRect(-playerDrawWidth / 2 + 4 * wScale_play, -playerDrawHeight / 2 + 8 * wScale_play, playerDrawWidth - 8 * wScale_play, 12 * wScale_play);
     
     ctx.fillStyle = '#fff';
@@ -1120,7 +1221,8 @@ export default function App() {
     ctx.fillRect(-playerDrawWidth / 2 + 2 * wScale_play, playerDrawHeight / 2 - 2 * wScale_play, 6 * wScale_play, 4 * wScale_play);
     ctx.fillRect(playerDrawWidth / 2 - 8 * wScale_play, playerDrawHeight / 2 - 2 * wScale_play, 6 * wScale_play, 4 * wScale_play);
     
-    ctx.restore();
+    ctx.restore(); // end of chassis translate
+    ctx.restore(); // end of main player translate
 
     // Floating text feedback for active drifting or score gains
     if (isDriftingRef.current && driftScoreRef.current > 10) {
