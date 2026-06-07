@@ -910,8 +910,11 @@ export default function App() {
       }
     }
 
-    // Start Line (Checkered) - Only if visible
-    const startLineY = (CANVAS_HEIGHT - 150) + (distanceRef.current * 100);
+    // Start Line (Checkered) - Ensure visibility at the beginning
+    const startLineY = (gameState === 'start' || gameState === 'countdown')
+      ? (CANVAS_HEIGHT - 150)
+      : (CANVAS_HEIGHT - 150) + (distanceRef.current * 100);
+
     if (startLineY < CANVAS_HEIGHT + 100 && startLineY > -100) {
       const squareSize = 20;
       for (let yOffset = 0; yOffset < 40; yOffset += segmentHeight) {
