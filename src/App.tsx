@@ -932,6 +932,21 @@ export default function App() {
       }
     }
 
+    // Countdown Display
+    if (gameState === 'countdown') {
+      ctx.save();
+      ctx.font = 'bold 80px sans-serif';
+      ctx.fillStyle = 'white';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      if (countdown > 0) {
+        ctx.fillText(countdown.toString(), CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2);
+      } else {
+        ctx.fillText('GO!', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2);
+      }
+      ctx.restore();
+    }
+
     // Draw Entities (scaled for flat overhead top-down presentation)
     entities.current.forEach(entity => {
       const entY = entity.y;
@@ -1495,19 +1510,6 @@ export default function App() {
                   START RACE
                 </button>
 
-                <div className="mt-10 flex gap-8 text-neutral-500 font-bold uppercase tracking-[0.2em] text-[9px]">
-                  <div className="flex flex-col items-center gap-2">
-                    <span className="px-2 py-1 bg-neutral-800 rounded-md border border-neutral-700 font-mono text-xs text-neutral-300">W</span>
-                    <span>Throttle</span>
-                  </div>
-                  <div className="flex flex-col items-center gap-2">
-                    <div className="flex gap-1.5">
-                      <span className="px-2 py-1 bg-neutral-800 rounded-md border border-neutral-700 font-mono text-xs text-neutral-300">A</span>
-                      <span className="px-2 py-1 bg-neutral-800 rounded-md border border-neutral-700 font-mono text-xs text-neutral-300">D</span>
-                    </div>
-                    <span>Steering</span>
-                  </div>
-                </div>
               </motion.div>
             )}
 
