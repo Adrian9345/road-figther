@@ -13,8 +13,8 @@ const CAR_WIDTH = 30;
 const CAR_HEIGHT = 50;
 const INITIAL_FUEL = 100;
 const FUEL_CONSUMPTION_RATE = 0.04;
-const MAX_SPEED = 6; // 60 km/h
-const MIN_SPEED = 3;  // 30 km/h
+const MAX_SPEED = 5; // 50 km/h
+const MIN_SPEED = 2.5;  // 25 km/h
 const ACCELERATION = 0.05;
 const DECELERATION = 0.04;
 const BRAKE_FORCE = 0.8;
@@ -199,23 +199,23 @@ export default function App() {
     // Look ahead farther on the track (zoomed out to look up to 340 pixels ahead into future curves)
     const distAhead = lookAheadFactor * 340;
     
-    const currentCurveVal = getRoadCurveAtDistance(distance);
+    // Use the absolute curvature values of the master track layout instead of subtracting the player's current curve value.
+    // This allows the track itself to remain static and stable in world-space, and the car and camera to adapt to its curves.
     const targetCurveVal = getRoadCurveAtDistance(distance + distAhead);
     
-    // Scale curve offset to fit the view nicely and provide beautiful horizontal curves
-    const curveOffset = (targetCurveVal - currentCurveVal) * 0.15;
+    // 12000 is the peak curvature of our S-curve. Scale it so it has a maximum elegant displacement of 78 pixels.
+    const curveOffset = (targetCurveVal / 12000) * 78;
     
     return baseOffset + curveOffset;
   };
 
   const getRoadAngleAt = (y: number, distance: number) => {
-    const CANVAS_HEIGHT = displayHeightRef.current;
-    const worldDistance = distance + (CANVAS_HEIGHT - y) / 100;
-    const curve = getRoadCurveAtDistance(worldDistance);
-    
-    // Adjusted derivative for gentler curves
-    const derivative = Math.cos((y - distance * 100) * 0.001) * 0.0005 * curve;
-    return Math.atan(derivative);
+    // Finite difference on the visual road coordinates for a perfectly smooth tangent mapping
+    const y1 = y;
+    const y2 = y - 30; // Small lookahead for smooth tangent vector
+    const x1 = getRoadXAt(y1, distance);
+    const x2 = getRoadXAt(y2, distance);
+    return Math.atan2(x2 - x1, 30);
   };
 
   const spawnEntity = useCallback((isRival = false, initialY = -100, laneIndex?: number) => {
@@ -757,7 +757,7 @@ export default function App() {
         } else if (entity.type === 'oil') {
           // Slip and crash immediately with a more violent reaction
           setIsSpinning(true);
-          speedRef.current = Math.max(speedRef.current, 10); // Ensure some speed for the spin
+          speedRef.current = Math.max(speedRef.current, MAX_SPEED); // Ensure some speed for the spin, up to MAX_SPEED
           entity.y = CANVAS_HEIGHT + 200;
         } else if (entity.type === 'pothole') {
           // Pothole crash - immediate lose
@@ -839,11 +839,12 @@ export default function App() {
     const roadCenter_player = roadX1;
     const roadDeviation = roadCenter_player - CANVAS_WIDTH / 2;
     
-    // Target camera values: blend natural road incline and steering wheel tilt for responsive banking, and add modern lateral camera sway
-    const targetCameraAngle = -roadAngle * 0.8 + (steeringTilt * 0.15);
-    const targetCameraSlide = -roadDeviation * 0.55; // Simulates centrifugal drift, track sways fluidly on the screen
+    // Target camera values: keep the track's position stable on the screen (no camera slide)
+    // and make the camera roll dynamically to bank into the local curve for realistic G-force weight
+    const targetCameraAngle = -roadAngle * 1.0 + (steeringTilt * 0.18);
+    const targetCameraSlide = 0; // The track stays positionally stable on screen; cars snake along its curves
     
-    // Smooth interpolation for camera follow movement and alignment (lower factor = richer sense of mass/weight)
+    // Smooth interpolation for camera follow movement and alignment (lower factor = richer sense of mass and weight)
     const lerpFactor = 0.08; 
     cameraAngleRef.current += (targetCameraAngle - cameraAngleRef.current) * lerpFactor;
     cameraSlideRef.current += (targetCameraSlide - cameraSlideRef.current) * lerpFactor;
