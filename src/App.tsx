@@ -150,16 +150,25 @@ export default function App() {
   const generateMinimapPath = (width: number, height: number) => {
     if (trackCurvature.current.length === 0) return '';
     const points: string[] = [];
-    const totalPoints = 100; // Increased points for smoother minimap
+    const totalPoints = 100;
+
+    // Calculate max absolute curvature for scaling to ensure entire track fits
+    let maxCurvature = 0;
+    for (const curve of trackCurvature.current) {
+        if (Math.abs(curve) > maxCurvature) maxCurvature = Math.abs(curve);
+    }
+    if (maxCurvature === 0) maxCurvature = 1;
+
     for (let i = 0; i <= totalPoints; i++) {
-      const dist = (i / totalPoints) * TOTAL_RACE_DISTANCE;
-      const curve = getRoadCurveAtDistance(dist);
-      // Increased scaling to fit the entire track curvature range
-      const relativeX = curve / 4000; 
-      const x = width / 2 + relativeX * (width / 2 - 5);
-      const y = height - (i / totalPoints) * height;
-      if (i === 0) points.push(`M ${x} ${y}`);
-      else points.push(`L ${x} ${y}`);
+        const dist = (i / totalPoints) * TOTAL_RACE_DISTANCE;
+        const curve = getRoadCurveAtDistance(dist);
+        
+        // Scale curve to fit within width with a small margin
+        const relativeX = curve / (maxCurvature * 1.25); 
+        const x = width / 2 + relativeX * (width / 2 - 5);
+        const y = height - (i / totalPoints) * height;
+        if (i === 0) points.push(`M ${x} ${y}`);
+        else points.push(`L ${x} ${y}`);
     }
     return points.join(' ');
   };
@@ -311,19 +320,19 @@ export default function App() {
     trackCurvature.current = new Array(totalSegments).fill(0);
     
     for (let i = 0; i < totalSegments; i++) {
-        // Straight start for the first 20 segments (2000 units), then curves
-        if (i < 20) {
+        // Straight start for the first 10 segments (1000 units), then curves
+        if (i < 10) {
             trackCurvature.current[i] = 0;
         } else {
-            trackCurvature.current[i] = Math.sin(i * 0.25) * 1200 + Math.sin(i * 0.08) * 800;
+            trackCurvature.current[i] = Math.sin(i * 0.003) * 12000;
         }
     }
     
     // Extra smoothing
-    for (let i = 5; i < totalSegments - 5; i++) {
+    for (let i = 20; i < totalSegments - 20; i++) {
       let sum = 0;
-      for (let j = -5; j <= 5; j++) sum += trackCurvature.current[i + j];
-      trackCurvature.current[i] = sum / 11;
+      for (let j = -20; j <= 20; j++) sum += trackCurvature.current[i + j];
+      trackCurvature.current[i] = sum / 41;
     }
     
     // Setup Starting Grid: 9 rivals in front, player car at the very back
@@ -363,19 +372,19 @@ export default function App() {
     trackCurvature.current = new Array(totalSegments).fill(0);
     
     for (let i = 0; i < totalSegments; i++) {
-        // Straight start for the first 20 segments (2000 units), then curves
-        if (i < 20) {
+        // Straight start for the first 10 segments (1000 units), then curves
+        if (i < 10) {
             trackCurvature.current[i] = 0;
         } else {
-            trackCurvature.current[i] = Math.sin(i * 0.25) * 1200 + Math.sin(i * 0.08) * 800;
+            trackCurvature.current[i] = Math.sin(i * 0.003) * 12000;
         }
     }
     
     // Extra smoothing
-    for (let i = 5; i < totalSegments - 5; i++) {
+    for (let i = 20; i < totalSegments - 20; i++) {
       let sum = 0;
-      for (let j = -5; j <= 5; j++) sum += trackCurvature.current[i + j];
-      trackCurvature.current[i] = sum / 11;
+      for (let j = -20; j <= 20; j++) sum += trackCurvature.current[i + j];
+      trackCurvature.current[i] = sum / 41;
     }
   }, []);
 
@@ -1193,7 +1202,7 @@ export default function App() {
             ref={canvasRef}
             width={canvasRect.width}
             height={canvasRect.height}
-            className="w-full h-full block"
+            className="w-full h-full block object-contain"
           />
 
           {/* Top Arcade HUD & Dashboard Instrumentation */}
@@ -1204,15 +1213,15 @@ export default function App() {
                 
                 {/* 1. DIGITAL SPEEDOMETER (Left Instrument Panel) */}
                 <div className="flex flex-col">
-                  <span className="text-[7px] font-black uppercase tracking-widest text-neutral-500 leading-none">VELOCIDAD</span>
+                  <span className="text-[9px] sm:text-[7px] font-black uppercase tracking-widest text-neutral-500 leading-none">VELOCIDAD</span>
                   <div className="flex items-baseline gap-1 mt-0.5">
-                    <span className="text-2xl font-black italic tracking-tight tabular-nums text-cyan-400 drop-shadow-[0_0_8px_rgba(34,211,238,0.4)]">
+                    <span className="text-3xl sm:text-2xl font-black italic tracking-tight tabular-nums text-cyan-400 drop-shadow-[0_0_8px_rgba(34,211,238,0.4)]">
                       {Math.max(0, Math.floor(uiSpeed * 10))}
                     </span>
-                    <span className="text-[8px] font-black italic text-neutral-400">KM/H</span>
+                    <span className="text-[10px] sm:text-[8px] font-black italic text-neutral-400">KM/H</span>
                   </div>
                   {/* SPEED DIAL GRAPHIC */}
-                  <div className="w-[75px] h-1 bg-neutral-900 rounded-full mt-1 overflow-hidden flex">
+                  <div className="w-[85px] sm:w-[75px] h-1.5 sm:h-1 bg-neutral-900 rounded-full mt-1 overflow-hidden flex">
                     <div 
                       className="h-full bg-gradient-to-r from-cyan-500 to-blue-500 transition-all duration-100"
                       style={{ width: `${(uiSpeed / MAX_SPEED) * 100}%` }}
@@ -1222,26 +1231,26 @@ export default function App() {
 
                 {/* 2. CHARRING PROGRESS & CURVATURE RADAR (Center Instrument) */}
                 <div className="flex flex-col items-center text-center">
-                  <span className="text-[7px] font-black uppercase tracking-widest text-neutral-500 leading-none">PUNTOS</span>
-                  <span className="text-xl font-extrabold italic text-amber-400 tabular-nums leading-none mt-1 drop-shadow-[0_0_10px_rgba(245,158,11,0.3)]">
+                  <span className="text-[9px] sm:text-[7px] font-black uppercase tracking-widest text-neutral-500 leading-none">PUNTOS</span>
+                  <span className="text-2xl sm:text-xl font-extrabold italic text-amber-400 tabular-nums leading-none mt-1 drop-shadow-[0_0_10px_rgba(245,158,11,0.3)]">
                     {uiScore}
                   </span>
-                  <span className="text-[6px] font-black tracking-wider text-neutral-400 leading-none mt-1 uppercase">
+                  <span className="text-[8px] sm:text-[6px] font-black tracking-wider text-neutral-400 leading-none mt-1 uppercase">
                     RÉCORD: {highScore > 0 ? highScore : 'NO RECORD'}
                   </span>
                 </div>
 
                 {/* 3. BATTERY POWER / ENERGY BAR (Right Instrument Panel) */}
                 <div className="flex flex-col items-end">
-                  <span className="text-[7px] font-black uppercase tracking-widest text-neutral-500 leading-none">BATERÍA / ENERGÍA</span>
+                  <span className="text-[9px] sm:text-[7px] font-black uppercase tracking-widest text-neutral-500 leading-none">BATERÍA / ENERGÍA</span>
                   <div className="flex items-center gap-1.5 mt-0.5">
-                    <Fuel className={`w-3.5 h-3.5 ${uiFuel <= 30 ? 'text-red-500 animate-bounce' : 'text-emerald-400'}`} />
-                    <span className={`text-xl font-black italic tabular-nums ${uiFuel <= 30 ? 'text-red-400 leading-none animate-pulse' : 'text-emerald-400'}`}>
+                    <Fuel className={`w-5 h-5 sm:w-3.5 sm:h-3.5 ${uiFuel <= 30 ? 'text-red-500 animate-bounce' : 'text-emerald-400'}`} />
+                    <span className={`text-2xl sm:text-xl font-black italic tabular-nums ${uiFuel <= 30 ? 'text-red-400 leading-none animate-pulse' : 'text-emerald-400'}`}>
                       {Math.max(0, Math.floor(uiFuel))}%
                     </span>
                   </div>
                   {/* ENERGY BAR GRAPHIC */}
-                  <div className="w-[85px] h-1.5 bg-neutral-900 rounded-full mt-1 overflow-hidden border border-neutral-800">
+                  <div className="w-[95px] sm:w-[85px] h-2 sm:h-1.5 bg-neutral-900 rounded-full mt-1 overflow-hidden border border-neutral-800">
                     <div 
                       className={`h-full rounded-full transition-all duration-150 ${uiFuel <= 30 ? 'bg-gradient-to-r from-red-600 to-red-400 animate-pulse' : 'bg-gradient-to-r from-emerald-500 to-teal-400'}`}
                       style={{ width: `${uiFuel}%` }}
@@ -1328,10 +1337,6 @@ export default function App() {
           {(gameState === 'playing' || gameState === 'countdown') && (
             <div className="absolute bottom-5 inset-x-3 sm:inset-x-8 z-10 select-none flex flex-col items-center gap-2 pointer-events-none">
               
-              {/* Keyboard hints banner */}
-              <div className="px-2.5 py-0.5 bg-black/70 border border-neutral-800/60 rounded-full text-[8px] font-bold uppercase tracking-[0.2em] text-neutral-500 mb-1 pointer-events-auto">
-                ⌨️ <span className="text-neutral-400">W-S-A-D / Arrows</span> to Drive • <span className="text-neutral-400">Spacebar</span> to Drift
-              </div>
 
               {/* Main controls deck wrapper */}
               <div className="w-full max-w-xl mx-auto flex items-end justify-between px-2 sm:px-4 pointer-events-auto gap-4">
@@ -1346,7 +1351,7 @@ export default function App() {
                     onTouchStart={(e) => { e.preventDefault(); keys.current['arrowleft'] = true; }}
                     onTouchEnd={(e) => { e.preventDefault(); keys.current['arrowleft'] = false; }}
                     className="w-14 h-14 sm:w-[54px] sm:h-[54px] rounded-2xl bg-black/85 border border-neutral-800 hover:border-neutral-500 text-neutral-300 active:text-cyan-400 active:border-cyan-500/80 active:shadow-[0_0_15px_rgba(34,211,238,0.3)] transition-all flex items-center justify-center active:scale-90 shadow-2xl shrink-0 cursor-pointer outline-none touch-none"
-                    title="A / Flecha Izquierda"
+                    
                   >
                     <ChevronLeft className="w-8 h-8 pointer-events-none" strokeWidth={2.5} />
                   </button>
@@ -1359,7 +1364,7 @@ export default function App() {
                     onTouchStart={(e) => { e.preventDefault(); keys.current['arrowright'] = true; }}
                     onTouchEnd={(e) => { e.preventDefault(); keys.current['arrowright'] = false; }}
                     className="w-14 h-14 sm:w-[54px] sm:h-[54px] rounded-2xl bg-black/85 border border-neutral-800 hover:border-neutral-500 text-neutral-300 active:text-cyan-400 active:border-cyan-500/80 active:shadow-[0_0_15px_rgba(34,211,238,0.3)] transition-all flex items-center justify-center active:scale-90 shadow-2xl shrink-0 cursor-pointer outline-none touch-none"
-                    title="D / Flecha Derecha"
+                    
                   >
                     <ChevronRight className="w-8 h-8 pointer-events-none" strokeWidth={2.5} />
                   </button>
